@@ -133,11 +133,15 @@ export default function SimsRelationshipExplorer() {
   // Kanten-Labelmodus
   const [edgeLabelMode, setEdgeLabelMode] = useState("emoji"); // 'emoji' | 'emoji+text' | 'off'
 
-  // Rechtsklick-Edit
+  // Rechtsklick-Edit (Nodes)
   const [editId, setEditId] = useState("");
   const [editLabel, setEditLabel] = useState("");
   const [editImgFile, setEditImgFile] = useState(null);
   const [ctx, setCtx] = useState({ open: false, x: 0, y: 0, nodeId: "" });
+
+  // *** NEU: Rechtsklick-Edit (Edges) ***
+  const [edgeCtx, setEdgeCtx] = useState({ open: false, x: 0, y: 0, edgeId: "" });
+  const [edgeEdit, setEdgeEdit] = useState({ open: false, id: "", source: "", target: "", type: "friend", strength: 0.5 });
 
   // Undo/Redo
   const [history, setHistory] = useState([]);
@@ -254,6 +258,7 @@ export default function SimsRelationshipExplorer() {
       setFocusId(id);
       setSelectedForImage(id);
       setCtx((p) => ({ ...p, open: false }));
+      setEdgeCtx((p) => ({ ...p, open: false }));
     });
     cy.on("mouseover", "node", (evt) => evt.target.addClass("hovered"));
     cy.on("mouseout", "node", (evt) => evt.target.removeClass("hovered"));
@@ -266,6 +271,7 @@ export default function SimsRelationshipExplorer() {
       setRelType(e.data("type"));
       setRelStrength(e.data("strength") ?? 0.5);
       setCtx((p) => ({ ...p, open: false }));
+      setEdgeCtx((p) => ({ ...p, open: false }));
     });
 
     // Labels auf Kanten (Emoji/Text)
@@ -281,12 +287,27 @@ export default function SimsRelationshipExplorer() {
       ed.style("font-size", 14);
     });
 
-    // Rechtsklick / Long-press → Kontextmenü
+    // Rechtsklick / Long-press → Kontextmenüs
     cy.on("cxttap", "node", (evt) => {
       const id = evt.target.id();
       const p = evt.renderedPosition;
       setCtx({ open: true, x: p.x, y: p.y, nodeId: id });
+      setEdgeCtx({ open: false, x: 0, y: 0, edgeId: "" });
     });
+
+    // *** NEU: Rechtsklick auf KANTE ***
+    cy.on("cxttap", "edge", (evt) => {
+      const p = evt.renderedPosition;
+      const edge = evt.target;
+      setSelectedEdgeId(edge.id());
+      setEdgeCtx({ open: true, x: p.x, y: p.y, edgeId: edge.id() });
+      setCtx({ open: false, x: 0, y: 0, nodeId: "" });
+    });
+
+    // Menü schließen bei Tap/Zoom/Drag
+    cy.on("tap", (evt) => { if (evt.target === cy) { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); }});
+    cy.on("zoom", () => { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); });
+    cy.on("drag", () => { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); });
 
     cyRef.current = cy;
     return () => cy.destroy();
@@ -419,7 +440,7 @@ export default function SimsRelationshipExplorer() {
     r.readAsDataURL(file);
   }
 
-  // --- Editing actions ---
+  // --- Editing actions (Nodes) ---
   function setNodeImage(nodeId, src) {
     setData((prev) => ({
       ...prev,
@@ -459,14 +480,10 @@ export default function SimsRelationshipExplorer() {
   }
   function deleteSelectedEdge() {
     if (!selectedEdgeId) return;
-    const next = deepClone(data);
-    next.edges = next.edges.filter((e) => (e.id || `${e.source}-${e.target}-${e.type}`) !== selectedEdgeId);
-    pushHistory(data);
-    setData(next);
-    setSelectedEdgeId("");
+    deleteEdgeById(selectedEdgeId);
   }
 
-  // Rechtsklick-Editor
+  // Rechtsklick-Editor (Nodes)
   function openEditPerson(id) {
     const n = data.nodes.find((x) => x.id === id);
     if (!n) return;
@@ -516,6 +533,43 @@ export default function SimsRelationshipExplorer() {
     pushHistory(data);
     setData(next);
     setCtx({ open: false, x: 0, y: 0, nodeId: "" });
+  }
+
+  // *** NEU: Edge‑Aktionen ***
+  function openEdgeEdit(edgeId) {
+    const e = data.edges.find((x) => (x.id || `${x.source}-${x.target}-${x.type}`) === edgeId);
+    if (!e) return;
+    setEdgeEdit({
+      open: true,
+      id: edgeId,
+      source: e.source,
+      target: e.target,
+      type: e.type,
+      strength: typeof e.strength === "number" ? e.strength : 0.5,
+    });
+    setEdgeCtx((m) => ({ ...m, open: false }));
+  }
+  function saveEdgeEdit() {
+    const { id, type, strength } = edgeEdit;
+    if (!id) return;
+    const next = deepClone(data);
+    const idx = next.edges.findIndex((x) => (x.id || `${x.source}-${x.target}-${x.type}`) === id);
+    if (idx === -1) return;
+    next.edges[idx].type = type;
+    next.edges[idx].strength = strength;
+
+    // ID stabil lassen; Stil/Label passen sich im useEffect([data]) an
+    pushHistory(data);
+    setData(next);
+    setEdgeEdit({ open: false, id: "", source: "", target: "", type: "friend", strength: 0.5 });
+  }
+  function deleteEdgeById(edgeId) {
+    const next = deepClone(data);
+    next.edges = next.edges.filter((e) => (e.id || `${e.source}-${e.target}-${e.type}`) !== edgeId);
+    pushHistory(data);
+    setData(next);
+    setSelectedEdgeId("");
+    setEdgeCtx({ open: false, x: 0, y: 0, edgeId: "" });
   }
 
   // --- UI helpers ---
@@ -688,21 +742,25 @@ export default function SimsRelationshipExplorer() {
             </label>
             <button onClick={exportJson} style={btn()}>JSON exportieren</button>
           </div>
-          <div style={{ fontSize: 12, color: T.subtext, marginTop: 8 }}>Autosave aktiv (LocalStorage). Undo/Redo: Ctrl+Z / Ctrl+Y. Rechtsklick auf Knoten → Menü.</div>
+          <div style={{ fontSize: 12, color: T.subtext, marginTop: 8 }}>Autosave aktiv (LocalStorage). Undo/Redo: Ctrl+Z / Ctrl+Y. Rechtsklick auf Knoten/Kanten → Menü.</div>
         </div>
       </div>
 
       {/* Graph */}
       <div>
-        <div ref={graphWrapRef} style={{ position: "relative", width: "100%", height: "82vh", borderRadius: 18, border: `1px solid ${T.line}`, boxShadow: T.shadow, background: T.glassBg, backdropFilter: "blur(6px)" }}>
+        <div
+          ref={graphWrapRef}
+          style={{ position: "relative", width: "100%", height: "82vh", borderRadius: 18, border: `1px solid ${T.line}`, boxShadow: T.shadow, background: T.glassBg, backdropFilter: "blur(6px)" }}
+          onContextMenu={(e)=>e.preventDefault()}  // <- native Kontextmenüs verhindern
+        >
           <div ref={containerRef} style={{ position: "absolute", inset: 0, borderRadius: 18 }} />
           {!focusId && (
             <div style={{ position: "absolute", top: 10, left: 10, fontSize: 12, color: T.subtext, background: T.glassBg, padding: "6px 8px", border: `1px solid ${T.line}`, borderRadius: 8 }}>
-              Tipp: Rechtsklick auf eine Person öffnet das Menü.
+              Tipp: Rechtsklick auf eine Person oder Kante öffnet das Menü.
             </div>
           )}
 
-          {/* Kontextmenü */}
+          {/* Kontextmenü (Nodes) */}
           {ctx.open && (
             <div
               style={{ position: "absolute", left: ctx.x, top: ctx.y, transform: "translateY(8px)", minWidth: 180, zIndex: 40, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
@@ -716,10 +774,25 @@ export default function SimsRelationshipExplorer() {
               <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => setCtx({ open: false, x: 0, y: 0, nodeId: "" })}>Abbrechen</div>
             </div>
           )}
+
+          {/* *** NEU: Kontextmenü (Edges) *** */}
+          {edgeCtx.open && (
+            <div
+              style={{ position: "absolute", left: edgeCtx.x, top: edgeCtx.y, transform: "translateY(8px)", minWidth: 200, zIndex: 41, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ padding: "8px 10px", fontWeight: 700, color: T.subtext }}>Beziehung</div>
+              <div style={{ height: 1, background: T.line }} />
+              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => openEdgeEdit(edgeCtx.edgeId)}>✏️ Bearbeiten…</div>
+              <div style={{ padding: "8px 10px", cursor: "pointer", color: "#b3261e" }} onClick={() => deleteEdgeById(edgeCtx.edgeId)}>🗑️ Löschen</div>
+              <div style={{ height: 1, background: T.line }} />
+              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => setEdgeCtx({ open: false, x: 0, y: 0, edgeId: "" })}>Abbrechen</div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Edit-Modal */}
+      {/* Edit-Modal (Nodes) */}
       {editId && (
         <div onClick={closeEdit} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: 380, padding: 16, borderRadius: 16, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(8px)" }}>
@@ -732,6 +805,39 @@ export default function SimsRelationshipExplorer() {
               <button style={{ padding: "9px 12px", borderRadius: 12, border: `1px solid ${T.line}`, background: T.accent, color: "#fff" }} onClick={saveEditPerson}>Speichern</button>
               <button style={{ padding: "9px 12px", borderRadius: 12, border: `1px solid ${T.line}`, background: T.accentSoft }} onClick={closeEdit}>Abbrechen</button>
               <button style={{ padding: "9px 12px", borderRadius: 12, border: "1px solid #f5b9b9", background: "#ffecec" }} onClick={deletePerson}>Person löschen</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* *** NEU: Edit-Modal (Edges) *** */}
+      {edgeEdit.open && (
+        <div onClick={() => setEdgeEdit((s)=>({ ...s, open:false }))} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 51 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 420, padding: 16, borderRadius: 16, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(8px)" }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Beziehung bearbeiten</div>
+            <div style={{ fontSize: 13, color: T.subtext, marginBottom: 10 }}>
+              {idToLabel.get(edgeEdit.source) || edgeEdit.source}  ⟷  {idToLabel.get(edgeEdit.target) || edgeEdit.target}
+            </div>
+            <label style={labelS}>Typ</label>
+            <select
+              style={inputS}
+              value={edgeEdit.type}
+              onChange={(e)=>setEdgeEdit((s)=>({ ...s, type: e.target.value }))}
+            >
+              {Object.keys(EDGE_STYLE).map((k) => (
+                <option key={k} value={k}>{EDGE_STYLE[k].emoji} {EDGE_STYLE[k].label}</option>
+              ))}
+            </select>
+            <label style={{ ...labelS, marginTop: 8 }}>Stärke: {edgeEdit.strength.toFixed(2)}</label>
+            <input
+              type="range" min={0} max={1} step={0.05}
+              value={edgeEdit.strength}
+              onChange={(e)=>setEdgeEdit((s)=>({ ...s, strength: parseFloat(e.target.value) }))}
+              style={{ width: "100%" }}
+            />
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+              <button style={btn()} onClick={()=>setEdgeEdit((s)=>({ ...s, open:false }))}>Abbrechen</button>
+              <button style={btn(true)} onClick={saveEdgeEdit}>Speichern</button>
             </div>
           </div>
         </div>
