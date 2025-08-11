@@ -20,44 +20,39 @@ const THEME = {
 
 // ====== Beziehungstypen inkl. Emojis ======
 const EDGE_STYLE = {
-  // ——— ROMANCE ———
-  married:   { emoji: "💍", color: "#7c3aed", lineStyle: "solid", width: 4, label: "Verheiratet" },
-  engaged:   { emoji: "💎", color: "#8b5cf6", lineStyle: "solid", width: 3, label: "Verlobt" },
-  partner:   { emoji: "❤️", color: "#ef4444", lineStyle: "solid", width: 3, label: "Partner*in" },
-  romantic:  { emoji: "❤️‍🔥", color: "#ef4444", lineStyle: "solid", width: 3, label: "Romantisch" },
-  crush:     { emoji: "💘", color: "#fb7185", lineStyle: "dotted", width: 2, label: "Schwarm" },
-  ex:        { emoji: "💔", color: "#f97316", lineStyle: "dashed", width: 2, label: "Ex" },
+  married:   { emoji: "💍",  color: "#7c3aed", lineStyle: "solid",  width: 4, label: "Verheiratet" },
+  engaged:   { emoji: "💎",  color: "#8b5cf6", lineStyle: "solid",  width: 3, label: "Verlobt" },
+  partner:   { emoji: "❤️",  color: "#ef4444", lineStyle: "solid",  width: 3, label: "Partner*in" },
+  romantic:  { emoji: "❤️‍🔥", color: "#ef4444", lineStyle: "solid",  width: 3, label: "Romantisch" },
+  crush:     { emoji: "💘",  color: "#fb7185", lineStyle: "dotted", width: 2, label: "Schwarm" },
+  ex:        { emoji: "💔",  color: "#f97316", lineStyle: "dashed", width: 2, label: "Ex" },
 
-  // ——— FAMILY ———
-  parent:    { emoji: "👪", color: "#0ea5e9", lineStyle: "solid", width: 3, label: "Eltern/Kind" },
-  child:     { emoji: "🧒", color: "#38bdf8", lineStyle: "solid", width: 3, label: "Kind" },
-  sibling:   { emoji: "👫", color: "#22c55e", lineStyle: "solid", width: 3, label: "Geschwister" },
-  halfsibling:{emoji:"🧬", color:"#16a34a", lineStyle:"dashed", width:2, label:"Halbgeschw."},
+  parent:    { emoji: "👪",  color: "#0ea5e9", lineStyle: "solid",  width: 3, label: "Eltern/Kind" },
+  child:     { emoji: "🧒",  color: "#38bdf8", lineStyle: "solid",  width: 3, label: "Kind" },
+  sibling:   { emoji: "👫",  color: "#22c55e", lineStyle: "solid",  width: 3, label: "Geschwister" },
+  halfsibling:{emoji:"🧬",  color:"#16a34a", lineStyle:"dashed",    width:2, label:"Halbgeschw."},
   steps:     { emoji: "👨‍👩‍👧", color: "#10b981", lineStyle: "dashed", width: 2, label: "Stiefbezug" },
-  grand:     { emoji: "👴", color: "#06b6d4", lineStyle: "solid", width: 3, label: "Großeltern/Enkel" },
-  cousin:    { emoji: "👫", color: "#14b8a6", lineStyle: "dotted", width: 2, label: "Cousin/Cousine" },
-  inlaw:     { emoji: "🤝", color: "#0d9488", lineStyle: "dotted", width: 2, label: "Verschwägert" },
-  adopted:   { emoji: "🍼", color: "#22d3ee", lineStyle: "dashed", width: 2, label: "Adoptiert" },
+  grand:     { emoji: "👴",  color: "#06b6d4", lineStyle: "solid",  width: 3, label: "Großeltern/Enkel" },
+  cousin:    { emoji: "👫",  color: "#14b8a6", lineStyle: "dotted", width: 2, label: "Cousin/Cousine" },
+  inlaw:     { emoji: "🤝",  color: "#0d9488", lineStyle: "dotted", width: 2, label: "Verschwägert" },
+  adopted:   { emoji: "🍼",  color: "#22d3ee", lineStyle: "dashed", width: 2, label: "Adoptiert" },
 
-  // ——— SOCIAL ———
-  roommate:  { emoji: "🏠", color: "#60a5fa", lineStyle: "solid", width: 2, label: "Mitbewohner*in" },
-  friend:    { emoji: "🤝", color: "#10b981", lineStyle: "dotted", width: 2, label: "Freundschaft" },
-  goodfriend:{ emoji: "😊", color: "#34d399", lineStyle: "dotted", width: 2, label: "Gute Freunde" },
-  bestfriend:{ emoji: "🌟", color: "#22c55e", lineStyle: "solid", width: 3, label: "Beste Freunde" },
-  acquaintance:{emoji:"👋", color:"#9ca3af", lineStyle:"dotted", width:1, label:"Bekannte*r"},
-  coworker:  { emoji: "💼", color: "#64748b", lineStyle: "dotted", width: 2, label: "Kolleg*in" },
-  classmate: { emoji: "📚", color: "#94a3b8", lineStyle: "dotted", width: 2, label: "Klassenkamerad*in" },
-  neighbor:  { emoji: "🚪", color: "#93c5fd", lineStyle: "dotted", width: 2, label: "Nachbar*in" },
-  mentor:    { emoji: "🧠", color: "#7dd3fc", lineStyle: "solid", width: 2, label: "Mentor/Mentee" },
+  roommate:  { emoji: "🏠",  color: "#60a5fa", lineStyle: "solid",  width: 2, label: "Mitbewohner*in" },
+  friend:    { emoji: "🤝",  color: "#10b981", lineStyle: "dotted", width: 2, label: "Freundschaft" },
+  goodfriend:{ emoji: "😊",  color: "#34d399", lineStyle: "dotted", width: 2, label: "Gute Freunde" },
+  bestfriend:{ emoji: "🌟",  color: "#22c55e", lineStyle: "solid",  width: 3, label: "Beste Freunde" },
+  acquaintance:{emoji:"👋",  color:"#9ca3af", lineStyle:"dotted",   width:1, label:"Bekannte*r"},
+  coworker:  { emoji: "💼",  color: "#64748b", lineStyle: "dotted", width: 2, label: "Kolleg*in" },
+  classmate: { emoji: "📚",  color: "#94a3b8", lineStyle: "dotted", width: 2, label: "Klassenkamerad*in" },
+  neighbor:  { emoji: "🚪",  color: "#93c5fd", lineStyle: "dotted", width: 2, label: "Nachbar*in" },
+  mentor:    { emoji: "🧠",  color: "#7dd3fc", lineStyle: "solid",  width: 2, label: "Mentor/Mentee" },
 
-  // ——— NEGATIVE / DRAMA ———
-  disliked:  { emoji: "😒", color: "#9ca3af", lineStyle: "dashed", width: 2, label: "Missfallen" },
-  enemy:     { emoji: "😡", color: "#111827", lineStyle: "dashed", width: 3, label: "Feindschaft" },
-  rivalry:   { emoji: "⚡", color: "#64748b", lineStyle: "dashed", width: 2, label: "Rivalität" },
-  grudge:    { emoji: "🧨", color: "#ef4444", lineStyle: "dashed", width: 2, label: "Groll" },
+  disliked:  { emoji: "😒",  color: "#9ca3af", lineStyle: "dashed", width: 2, label: "Missfallen" },
+  enemy:     { emoji: "😡",  color: "#111827", lineStyle: "dashed", width: 3, label: "Feindschaft" },
+  rivalry:   { emoji: "⚡",  color: "#64748b", lineStyle: "dashed", width: 2, label: "Rivalität" },
+  grudge:    { emoji: "🧨",  color: "#ef4444", lineStyle: "dashed", width: 2, label: "Groll" },
 
-  // ——— PETS ———
-  owner_pet: { emoji: "🐾", color: "#f59e0b", lineStyle: "solid", width: 2, label: "Besitzer*in/Haustier" },
+  owner_pet: { emoji: "🐾",  color: "#f59e0b", lineStyle: "solid",  width: 2, label: "Besitzer*in/Haustier" },
 };
 
 // ====== Beispiel-Daten ======
@@ -85,6 +80,8 @@ const START_SAMPLE = {
 
 const LS_KEY = "simsExplorerDataV1";
 const LS_UI  = "simsExplorerUiV1";
+const LS_BG_IMG = "simsExplorerBgImageV1";
+const LS_BG_OPA = "simsExplorerBgOpacityV1";
 
 const deepClone = (o) => JSON.parse(JSON.stringify(o));
 const makeIdFromLabel = (label) =>
@@ -96,6 +93,7 @@ export default function SimsRelationshipExplorer() {
   const graphWrapRef = useRef(null);
   const cyRef = useRef(null);
 
+  const bgFileRef = useRef(null); // für Rechtsklick-Menü
   const T = THEME;
 
   // --- State ---
@@ -130,22 +128,31 @@ export default function SimsRelationshipExplorer() {
   const [relStrength, setRelStrength] = useState(0.8);
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
 
-  // Kanten-Labelmodus
-  const [edgeLabelMode, setEdgeLabelMode] = useState("emoji"); // 'emoji' | 'emoji+text' | 'off'
+  const [edgeLabelMode, setEdgeLabelMode] = useState("emoji");
 
-  // Rechtsklick-Edit (Nodes)
-  const [editId, setEditId] = useState("");
-  const [editLabel, setEditLabel] = useState("");
-  const [editImgFile, setEditImgFile] = useState(null);
+  // Kontextmenüs
   const [ctx, setCtx] = useState({ open: false, x: 0, y: 0, nodeId: "" });
-
-  // *** NEU: Rechtsklick-Edit (Edges) ***
   const [edgeCtx, setEdgeCtx] = useState({ open: false, x: 0, y: 0, edgeId: "" });
+  const [bgCtx, setBgCtx] = useState({ open: false, x: 0, y: 0 }); // NEU: Hintergrund
+
   const [edgeEdit, setEdgeEdit] = useState({ open: false, id: "", source: "", target: "", type: "friend", strength: 0.5 });
 
   // Undo/Redo
   const [history, setHistory] = useState([]);
   const [future, setFuture] = useState([]);
+
+  // Hintergrund (persistiert)
+  const [bgImage, setBgImage] = useState(() => {
+    try { return localStorage.getItem(LS_BG_IMG) || ""; } catch {}
+    return "";
+  });
+  const [bgOpacity, setBgOpacity] = useState(() => {
+    try {
+      const v = parseFloat(localStorage.getItem(LS_BG_OPA));
+      return Number.isFinite(v) ? v : 0.3;
+    } catch {}
+    return 0.3;
+  });
 
   const idToLabel = useMemo(() => {
     const m = new Map();
@@ -177,6 +184,20 @@ export default function SimsRelationshipExplorer() {
     }, 150);
     return () => clearTimeout(t);
   }, [focusId, depth, onlyNeighborhood]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try { bgImage ? localStorage.setItem(LS_BG_IMG, bgImage) : localStorage.removeItem(LS_BG_IMG); } catch {}
+    }, 150);
+    return () => clearTimeout(t);
+  }, [bgImage]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try { localStorage.setItem(LS_BG_OPA, String(bgOpacity)); } catch {}
+    }, 150);
+    return () => clearTimeout(t);
+  }, [bgOpacity]);
 
   function pushHistory(prev) {
     setHistory((h) => [...h.slice(-49), deepClone(prev)]);
@@ -259,6 +280,7 @@ export default function SimsRelationshipExplorer() {
       setSelectedForImage(id);
       setCtx((p) => ({ ...p, open: false }));
       setEdgeCtx((p) => ({ ...p, open: false }));
+      setBgCtx({ open: false, x: 0, y: 0 });
     });
     cy.on("mouseover", "node", (evt) => evt.target.addClass("hovered"));
     cy.on("mouseout", "node", (evt) => evt.target.removeClass("hovered"));
@@ -272,9 +294,10 @@ export default function SimsRelationshipExplorer() {
       setRelStrength(e.data("strength") ?? 0.5);
       setCtx((p) => ({ ...p, open: false }));
       setEdgeCtx((p) => ({ ...p, open: false }));
+      setBgCtx({ open: false, x: 0, y: 0 });
     });
 
-    // Labels auf Kanten (Emoji/Text)
+    // Kantenlabels initialisieren
     cy.on("add data", "edge", (e) => {
       const ed = e.target;
       const t = ed.data("type");
@@ -287,31 +310,43 @@ export default function SimsRelationshipExplorer() {
       ed.style("font-size", 14);
     });
 
-    // Rechtsklick / Long-press → Kontextmenüs
+    // Rechtsklick: Node
     cy.on("cxttap", "node", (evt) => {
       const id = evt.target.id();
       const p = evt.renderedPosition;
       setCtx({ open: true, x: p.x, y: p.y, nodeId: id });
       setEdgeCtx({ open: false, x: 0, y: 0, edgeId: "" });
+      setBgCtx({ open: false, x: 0, y: 0 });
     });
 
-    // *** NEU: Rechtsklick auf KANTE ***
+    // Rechtsklick: Edge
     cy.on("cxttap", "edge", (evt) => {
       const p = evt.renderedPosition;
       const edge = evt.target;
       setSelectedEdgeId(edge.id());
       setEdgeCtx({ open: true, x: p.x, y: p.y, edgeId: edge.id() });
       setCtx({ open: false, x: 0, y: 0, nodeId: "" });
+      setBgCtx({ open: false, x: 0, y: 0 });
     });
 
-    // Menü schließen bei Tap/Zoom/Drag
-    cy.on("tap", (evt) => { if (evt.target === cy) { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); }});
-    cy.on("zoom", () => { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); });
-    cy.on("drag", () => { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); });
+    // Rechtsklick: Leerer Hintergrund (Core)
+    cy.on("cxttap", (evt) => {
+      if (evt.target === cy) {
+        const p = evt.renderedPosition || { x: 20, y: 20 };
+        setBgCtx({ open: true, x: p.x, y: p.y });
+        setCtx({ open: false, x: 0, y: 0, nodeId: "" });
+        setEdgeCtx({ open: false, x: 0, y: 0, edgeId: "" });
+      }
+    });
+
+    // Menü schließen bei allgemeinem Tap/Zoom/Drag
+    cy.on("tap", (evt) => { if (evt.target === cy) { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); setBgCtx({ open:false, x:0, y:0 }); }});
+    cy.on("zoom", () => { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); setBgCtx({ open:false, x:0, y:0 }); });
+    cy.on("drag", () => { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); setBgCtx({ open:false, x:0, y:0 }); });
 
     cyRef.current = cy;
     return () => cy.destroy();
-  }, [imgSize]);
+  }, [imgSize, edgeLabelMode]);
 
   // Build/Update Elemente
   useEffect(() => {
@@ -332,7 +367,6 @@ export default function SimsRelationshipExplorer() {
       })),
     ]);
 
-    // Kantenstil + initiale Labels
     Object.entries(EDGE_STYLE).forEach(([type, s]) => {
       cy.style().selector(`edge[type = "${type}"]`).style({
         "line-color": s.color,
@@ -440,6 +474,21 @@ export default function SimsRelationshipExplorer() {
     r.readAsDataURL(file);
   }
 
+  // Hintergrund laden/zurücksetzen (+ Menü schließen)
+  function handleBgImageUpload(file) {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      setBgImage(String(r.result));
+      setBgCtx({ open: false, x: 0, y: 0 });
+    };
+    r.readAsDataURL(file);
+  }
+  function clearBgImage() {
+    setBgImage("");
+    setBgCtx({ open: false, x: 0, y: 0 });
+  }
+
   // --- Editing actions (Nodes) ---
   function setNodeImage(nodeId, src) {
     setData((prev) => ({
@@ -483,7 +532,6 @@ export default function SimsRelationshipExplorer() {
     deleteEdgeById(selectedEdgeId);
   }
 
-  // Rechtsklick-Editor (Nodes)
   function openEditPerson(id) {
     const n = data.nodes.find((x) => x.id === id);
     if (!n) return;
@@ -491,6 +539,10 @@ export default function SimsRelationshipExplorer() {
     setEditLabel(n.label || id);
     setEditImgFile(null);
   }
+  const [editId, setEditId] = useState("");
+  const [editLabel, setEditLabel] = useState("");
+  const [editImgFile, setEditImgFile] = useState(null);
+
   function closeEdit() {
     setEditId("");
     setEditLabel("");
@@ -535,7 +587,6 @@ export default function SimsRelationshipExplorer() {
     setCtx({ open: false, x: 0, y: 0, nodeId: "" });
   }
 
-  // *** NEU: Edge‑Aktionen ***
   function openEdgeEdit(edgeId) {
     const e = data.edges.find((x) => (x.id || `${x.source}-${x.target}-${x.type}`) === edgeId);
     if (!e) return;
@@ -557,8 +608,6 @@ export default function SimsRelationshipExplorer() {
     if (idx === -1) return;
     next.edges[idx].type = type;
     next.edges[idx].strength = strength;
-
-    // ID stabil lassen; Stil/Label passen sich im useEffect([data]) an
     pushHistory(data);
     setData(next);
     setEdgeEdit({ open: false, id: "", source: "", target: "", type: "friend", strength: 0.5 });
@@ -595,7 +644,38 @@ export default function SimsRelationshipExplorer() {
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "380px 1fr", gap: 18, padding: 18, minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "Inter, system-ui, Arial, sans-serif" }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "380px 1fr",
+        gap: 18,
+        padding: 18,
+        minHeight: "100vh",
+        background: bgImage ? "transparent" : T.bg,
+        color: T.text,
+        fontFamily: "Inter, system-ui, Arial, sans-serif",
+        position: "relative",
+        zIndex: 0,
+      }}
+    >
+      {/* Globaler Hintergrund-Layer */}
+      {bgImage && (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundImage: `url(${bgImage})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+            opacity: bgOpacity,
+            pointerEvents: "none", // wichtig: Rechtsklick geht an Cytoscape durch
+            zIndex: -1,
+          }}
+        />
+      )}
+
       {/* Sidebar */}
       <div>
         {/* Top bar */}
@@ -744,6 +824,34 @@ export default function SimsRelationshipExplorer() {
           </div>
           <div style={{ fontSize: 12, color: T.subtext, marginTop: 8 }}>Autosave aktiv (LocalStorage). Undo/Redo: Ctrl+Z / Ctrl+Y. Rechtsklick auf Knoten/Kanten → Menü.</div>
         </div>
+
+        {/* Hintergrund (Sidebar) */}
+        <div style={panel}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Hintergrund</div>
+          <label style={labelS}>Eigenes Bild auswählen</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleBgImageUpload(e.target.files?.[0] || null)}
+            style={{ marginBottom: 10 }}
+          />
+          <label style={labelS}>Transparenz: {bgOpacity.toFixed(2)}</label>
+          <input
+            type="range"
+            min={0.1}
+            max={0.9}
+            step={0.05}
+            value={bgOpacity}
+            onChange={(e) => setBgOpacity(parseFloat(e.target.value))}
+            style={{ width: "100%", marginBottom: 10 }}
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button style={btn()} onClick={clearBgImage} disabled={!bgImage}>Zurücksetzen</button>
+          </div>
+          <div style={{ fontSize: 12, color: T.subtext, marginTop: 6 }}>
+            Tipp: Ruhiges, helles Motiv verwenden. Das Bild bleibt nur lokal (LocalStorage).
+          </div>
+        </div>
       </div>
 
       {/* Graph */}
@@ -751,14 +859,52 @@ export default function SimsRelationshipExplorer() {
         <div
           ref={graphWrapRef}
           style={{ position: "relative", width: "100%", height: "82vh", borderRadius: 18, border: `1px solid ${T.line}`, boxShadow: T.shadow, background: T.glassBg, backdropFilter: "blur(6px)" }}
-          onContextMenu={(e)=>e.preventDefault()}  // <- native Kontextmenüs verhindern
+          onContextMenu={(e)=>e.preventDefault()}
         >
           <div ref={containerRef} style={{ position: "absolute", inset: 0, borderRadius: 18 }} />
           {!focusId && (
             <div style={{ position: "absolute", top: 10, left: 10, fontSize: 12, color: T.subtext, background: T.glassBg, padding: "6px 8px", border: `1px solid ${T.line}`, borderRadius: 8 }}>
-              Tipp: Rechtsklick auf eine Person oder Kante öffnet das Menü.
+              Tipp: Rechtsklick auf eine Person, Kante oder in den leeren Bereich öffnet das Menü.
             </div>
           )}
+
+          {/* Kontextmenü (Hintergrund) */}
+          {bgCtx.open && (
+            <div
+              style={{ position: "absolute", left: bgCtx.x, top: bgCtx.y, transform: "translateY(8px)", minWidth: 220, zIndex: 39, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ padding: "8px 10px", fontWeight: 700, color: T.subtext }}>Hintergrund</div>
+              <div style={{ height: 1, background: T.line }} />
+              <div
+                style={{ padding: "8px 10px", cursor: "pointer" }}
+                onClick={() => bgFileRef.current && bgFileRef.current.click()}
+              >
+                🖼️ Bild auswählen…
+              </div>
+              <div style={{ padding: "8px 10px" }}>
+                <div style={{ fontSize: 12, color: T.subtext, marginBottom: 6 }}>Transparenz: {bgOpacity.toFixed(2)}</div>
+                <input
+                  type="range" min={0.1} max={0.9} step={0.05}
+                  value={bgOpacity}
+                  onChange={(e)=>setBgOpacity(parseFloat(e.target.value))}
+                  style={{ width: "100%" }}
+                />
+              </div>
+              <div style={{ padding: "8px 10px", cursor: "pointer", color: "#b3261e" }} onClick={clearBgImage}>🗑️ Zurücksetzen</div>
+              <div style={{ height: 1, background: T.line }} />
+              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => setBgCtx({ open:false, x:0, y:0 })}>Abbrechen</div>
+            </div>
+          )}
+
+          {/* Verstecktes File-Input für BG */}
+          <input
+            ref={bgFileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={(e)=>handleBgImageUpload(e.target.files?.[0] || null)}
+          />
 
           {/* Kontextmenü (Nodes) */}
           {ctx.open && (
@@ -775,7 +921,7 @@ export default function SimsRelationshipExplorer() {
             </div>
           )}
 
-          {/* *** NEU: Kontextmenü (Edges) *** */}
+          {/* Kontextmenü (Edges) */}
           {edgeCtx.open && (
             <div
               style={{ position: "absolute", left: edgeCtx.x, top: edgeCtx.y, transform: "translateY(8px)", minWidth: 200, zIndex: 41, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
@@ -810,7 +956,7 @@ export default function SimsRelationshipExplorer() {
         </div>
       )}
 
-      {/* *** NEU: Edit-Modal (Edges) *** */}
+      {/* Edit-Modal (Edges) */}
       {edgeEdit.open && (
         <div onClick={() => setEdgeEdit((s)=>({ ...s, open:false }))} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 51 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: 420, padding: 16, borderRadius: 16, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(8px)" }}>
