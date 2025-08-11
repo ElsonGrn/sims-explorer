@@ -55,6 +55,20 @@ const EDGE_STYLE = {
   owner_pet: { emoji: "🐾",  color: "#f59e0b", lineStyle: "solid",  width: 2, label: "Besitzer*in/Haustier" },
 };
 
+// ====== Info-Feld-Typen (Apple-Contacts-like) ======
+const FIELD_TEMPLATES = {
+  age:     { kind: "age",     label: "Alter",        type: "number",   singleton: true },
+  job:     { kind: "job",     label: "Job",          type: "text",     singleton: true },
+  hobbies: { kind: "hobbies", label: "Hobbys",       type: "tags",     singleton: true },
+  traits:  { kind: "traits",  label: "Merkmale",     type: "tags",     singleton: true },
+  occult:  { kind: "occult",  label: "Okkult",       type: "select",   singleton: true,
+             options: ["Mensch","Vampir","Zauberer","Meerjungfrau","Alien","Werwolf","Pflanzensim","Skelett"] },
+  notes:   { kind: "notes",   label: "Notizen",      type: "textarea", singleton: true },
+
+  customText: { kind: "customText", label: "Benutzerdefiniert (Text)", type: "text", singleton: false },
+  customTags: { kind: "customTags", label: "Benutzerdefiniert (Tags)", type: "tags", singleton: false },
+};
+
 // ====== Beispiel-Daten ======
 const START_SAMPLE = {
   nodes: [
@@ -87,13 +101,14 @@ const deepClone = (o) => JSON.parse(JSON.stringify(o));
 const makeIdFromLabel = (label) =>
   (label || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
   Math.random().toString(36).slice(2, 8);
+const rid = () => Math.random().toString(36).slice(2, 10);
 
 export default function SimsRelationshipExplorer() {
   const containerRef = useRef(null);
   const graphWrapRef = useRef(null);
   const cyRef = useRef(null);
 
-  const bgFileRef = useRef(null); // für Rechtsklick-Menü
+  const bgFileRef = useRef(null); // BG-Datei für Rechtsklick
   const T = THEME;
 
   // --- State ---
@@ -102,11 +117,21 @@ export default function SimsRelationshipExplorer() {
       const s = localStorage.getItem(LS_KEY);
       if (s) {
         const o = JSON.parse(s);
-        o.nodes = o.nodes.map((n) => ({ img: "", ...n }));
+        // Backfill: img, alive, info
+        o.nodes = o.nodes.map((n) => ({
+          img: "",
+          alive: n.alive !== false, // default: true
+          info: n.info && Array.isArray(n.info.fields) ? n.info : { fields: [] },
+          ...n,
+        }));
         return o;
       }
     } catch {}
-    return START_SAMPLE;
+    // Backfill für START_SAMPLE
+    return {
+      ...START_SAMPLE,
+      nodes: START_SAMPLE.nodes.map((n) => ({ alive: true, info: { fields: [] }, ...n })),
+    };
   });
 
   const [focusId, setFocusId] = useState("");
@@ -115,7 +140,7 @@ export default function SimsRelationshipExplorer() {
   const [visibleTypes, setVisibleTypes] = useState(() => new Set(Object.keys(EDGE_STYLE)));
   const [labelMode, setLabelMode] = useState("always");
   const [layoutRunning, setLayoutRunning] = useState(false);
-  const [imgSize, setImgSize] = useState(56);
+  const [imgSize] = useState(56);
 
   // Form / Edit
   const [selectedForImage, setSelectedForImage] = useState("");
@@ -133,7 +158,7 @@ export default function SimsRelationshipExplorer() {
   // Kontextmenüs
   const [ctx, setCtx] = useState({ open: false, x: 0, y: 0, nodeId: "" });
   const [edgeCtx, setEdgeCtx] = useState({ open: false, x: 0, y: 0, edgeId: "" });
-  const [bgCtx, setBgCtx] = useState({ open: false, x: 0, y: 0 }); // NEU: Hintergrund
+  const [bgCtx, setBgCtx] = useState({ open: false, x: 0, y: 0 });
 
   const [edgeEdit, setEdgeEdit] = useState({ open: false, id: "", source: "", target: "", type: "friend", strength: 0.5 });
 
@@ -152,6 +177,11 @@ export default function SimsRelationshipExplorer() {
       return Number.isFinite(v) ? v : 0.3;
     } catch {}
     return 0.3;
+  });
+
+  // Person-Infos Modal
+  const [infoModal, setInfoModal] = useState({
+    open: false, id: "", alive: true, fields: [],
   });
 
   const idToLabel = useMemo(() => {
@@ -191,7 +221,6 @@ export default function SimsRelationshipExplorer() {
     }, 150);
     return () => clearTimeout(t);
   }, [bgImage]);
-
   useEffect(() => {
     const t = setTimeout(() => {
       try { localStorage.setItem(LS_BG_OPA, String(bgOpacity)); } catch {}
@@ -232,7 +261,11 @@ export default function SimsRelationshipExplorer() {
         {
           selector: "node",
           style: {
-            label: (ele) => ele.data("label") ?? ele.id(),
+            label: (ele) => {
+              const base = ele.data("label") ?? ele.id();
+              const alive = ele.data("alive") !== 0;
+              return alive ? base : `☠️ ${base}`;
+            },
             color: T.text,
             "font-size": 12,
             width: imgSize,
@@ -254,6 +287,7 @@ export default function SimsRelationshipExplorer() {
             "shadow-offset-y": 2,
           },
         },
+        { selector: "node[alive = 0]", style: { "border-color": "#6b7280", "background-color": "#e5e7eb", opacity: 0.6 } },
         { selector: "node.hovered", style: { "border-width": 3, "border-color": T.accent } },
         { selector: "node.focused", style: { "border-width": 4, "border-color": T.accent, width: imgSize + 14, height: imgSize + 14 } },
         { selector: "node.dimmed", style: { opacity: 0.25 } },
@@ -355,7 +389,14 @@ export default function SimsRelationshipExplorer() {
 
     cy.elements().remove();
     cy.add([
-      ...data.nodes.map((n) => ({ data: { id: n.id, label: n.label, img: n.img || "" } })),
+      ...data.nodes.map((n) => ({
+        data: {
+          id: n.id,
+          label: n.label,
+          img: n.img || "",
+          alive: n.alive === false ? 0 : 1,
+        },
+      })),
       ...data.edges.map((e) => ({
         data: {
           id: e.id || `${e.source}-${e.target}-${e.type}`,
@@ -445,7 +486,12 @@ export default function SimsRelationshipExplorer() {
       try {
         const o = JSON.parse(String(r.result));
         if (!o.nodes || !o.edges) throw new Error("Erwarte keys 'nodes' & 'edges'");
-        o.nodes = o.nodes.map((n) => ({ img: "", ...n }));
+        o.nodes = o.nodes.map((n) => ({
+          img: "",
+          alive: n.alive !== false,
+          info: n.info && Array.isArray(n.info.fields) ? n.info : { fields: [] },
+          ...n,
+        }));
         pushHistory(data);
         setData(o);
         setFocusId("");
@@ -502,7 +548,7 @@ export default function SimsRelationshipExplorer() {
     if (data.nodes.some((n) => n.id === id)) return alert("ID existiert bereits");
     const commit = (img) => {
       const next = deepClone(data);
-      next.nodes.push({ id, label: newPersonLabel.trim(), img: img || "" });
+      next.nodes.push({ id, label: newPersonLabel.trim(), img: img || "", alive: true, info: { fields: [] } });
       pushHistory(data);
       setData(next);
       setNewPersonLabel("");
@@ -532,6 +578,7 @@ export default function SimsRelationshipExplorer() {
     deleteEdgeById(selectedEdgeId);
   }
 
+  // Person bearbeiten (Name/Bild) – bestehend
   function openEditPerson(id) {
     const n = data.nodes.find((x) => x.id === id);
     if (!n) return;
@@ -621,6 +668,94 @@ export default function SimsRelationshipExplorer() {
     setEdgeCtx({ open: false, x: 0, y: 0, edgeId: "" });
   }
 
+  // --- Person-Infos (neues Modal) ---
+  function openInfoModal(nodeId) {
+    const n = data.nodes.find((x) => x.id === nodeId);
+    if (!n) return;
+    const fields = (n.info && Array.isArray(n.info.fields)) ? deepClone(n.info.fields) : [];
+    setInfoModal({ open: true, id: nodeId, alive: n.alive !== false, fields });
+    setCtx((p) => ({ ...p, open: false }));
+  }
+  function closeInfoModal() {
+    setInfoModal({ open: false, id: "", alive: true, fields: [] });
+  }
+  function saveInfoModal() {
+    const next = deepClone(data);
+    const n = next.nodes.find((x) => x.id === infoModal.id);
+    if (n) {
+      n.alive = !!infoModal.alive;
+      n.info = { fields: sanitizeFields(infoModal.fields) };
+    }
+    pushHistory(data);
+    setData(next);
+    closeInfoModal();
+  }
+  function sanitizeFields(fields) {
+    // kleine Aufräumroutine
+    return fields.map((f) => {
+      const t = FIELD_TEMPLATES[f.kind] || {};
+      const label = f.label || t.label || f.kind;
+      if (t.type === "tags" || f.type === "tags") {
+        const vals = (f.values || []).map((s) => String(s).trim()).filter(Boolean);
+        return { ...f, label, type: "tags", values: [...new Set(vals)] };
+      }
+      if (t.type === "number" || f.type === "number") {
+        const v = f.value === "" || f.value === null || f.value === undefined ? "" : Number(f.value);
+        return { ...f, label, type: "number", value: Number.isFinite(v) ? v : "" };
+      }
+      if (t.type === "select" || f.type === "select") {
+        return { ...f, label, type: "select", value: f.value || "" };
+      }
+      if (t.type === "textarea" || f.type === "textarea") {
+        return { ...f, label, type: "textarea", value: String(f.value || "") };
+      }
+      return { ...f, label, type: "text", value: String(f.value ?? "") };
+    });
+  }
+  function addField(kind) {
+    const tpl = FIELD_TEMPLATES[kind];
+    if (!tpl) return;
+    setInfoModal((m) => {
+      // Singletons nicht doppeln
+      if (tpl.singleton && m.fields.some((f) => f.kind === kind)) return m;
+      const nf = {
+        id: "f_" + rid(),
+        kind,
+        label: tpl.label,
+        type: tpl.type,
+        value: tpl.type === "select" ? (tpl.options?.[0] || "") : "",
+        values: tpl.type === "tags" ? [] : undefined,
+        options: tpl.options,
+      };
+      return { ...m, fields: [...m.fields, nf] };
+    });
+  }
+  function deleteField(fid) {
+    setInfoModal((m) => ({ ...m, fields: m.fields.filter((f) => f.id !== fid) }));
+  }
+  function setFieldValue(fid, value) {
+    setInfoModal((m) => ({ ...m, fields: m.fields.map((f) => (f.id === fid ? { ...f, value } : f)) }));
+  }
+  function addTag(fid, tag) {
+    const t = String(tag).trim();
+    if (!t) return;
+    setInfoModal((m) => ({
+      ...m,
+      fields: m.fields.map((f) => (f.id === fid ? { ...f, values: [...(f.values || []), t] } : f)),
+    }));
+  }
+  function removeTag(fid, idx) {
+    setInfoModal((m) => ({
+      ...m,
+      fields: m.fields.map((f) => {
+        if (f.id !== fid) return f;
+        const vals = [...(f.values || [])];
+        vals.splice(idx, 1);
+        return { ...f, values: vals };
+      }),
+    }));
+  }
+
   // --- UI helpers ---
   const nodeOptions = useMemo(
     () => data.nodes.slice().sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id)),
@@ -670,7 +805,7 @@ export default function SimsRelationshipExplorer() {
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
             opacity: bgOpacity,
-            pointerEvents: "none", // wichtig: Rechtsklick geht an Cytoscape durch
+            pointerEvents: "none",
             zIndex: -1,
           }}
         />
@@ -864,7 +999,7 @@ export default function SimsRelationshipExplorer() {
           <div ref={containerRef} style={{ position: "absolute", inset: 0, borderRadius: 18 }} />
           {!focusId && (
             <div style={{ position: "absolute", top: 10, left: 10, fontSize: 12, color: T.subtext, background: T.glassBg, padding: "6px 8px", border: `1px solid ${T.line}`, borderRadius: 8 }}>
-              Tipp: Rechtsklick auf eine Person, Kante oder in den leeren Bereich öffnet das Menü.
+              Tipp: Rechtsklick auf Person/Kante oder in einen leeren Bereich öffnet das Menü.
             </div>
           )}
 
@@ -896,8 +1031,6 @@ export default function SimsRelationshipExplorer() {
               <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => setBgCtx({ open:false, x:0, y:0 })}>Abbrechen</div>
             </div>
           )}
-
-          {/* Verstecktes File-Input für BG */}
           <input
             ref={bgFileRef}
             type="file"
@@ -909,10 +1042,11 @@ export default function SimsRelationshipExplorer() {
           {/* Kontextmenü (Nodes) */}
           {ctx.open && (
             <div
-              style={{ position: "absolute", left: ctx.x, top: ctx.y, transform: "translateY(8px)", minWidth: 180, zIndex: 40, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
+              style={{ position: "absolute", left: ctx.x, top: ctx.y, transform: "translateY(8px)", minWidth: 200, zIndex: 40, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
               onClick={(e) => e.stopPropagation()}
             >
               <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => { openEditPerson(ctx.nodeId); setCtx((p) => ({ ...p, open: false })); }}>✏️ Bearbeiten…</div>
+              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => openInfoModal(ctx.nodeId)}>ℹ️ Infos…</div>
               <div style={{ height: 1, background: T.line }} />
               <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => deleteAllRelationsOf(ctx.nodeId)}>🔗 Alle Beziehungen löschen</div>
               <div style={{ padding: "8px 10px", cursor: "pointer", color: "#b3261e" }} onClick={deletePerson}>🗑️ Person entfernen</div>
@@ -956,38 +1090,98 @@ export default function SimsRelationshipExplorer() {
         </div>
       )}
 
-      {/* Edit-Modal (Edges) */}
-      {edgeEdit.open && (
-        <div onClick={() => setEdgeEdit((s)=>({ ...s, open:false }))} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 51 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: 420, padding: 16, borderRadius: 16, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(8px)" }}>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Beziehung bearbeiten</div>
-            <div style={{ fontSize: 13, color: T.subtext, marginBottom: 10 }}>
-              {idToLabel.get(edgeEdit.source) || edgeEdit.source}  ⟷  {idToLabel.get(edgeEdit.target) || edgeEdit.target}
+      {/* Person-Infos Modal */}
+      {infoModal.open && (
+        <div onClick={closeInfoModal} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 52 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 520, maxHeight: "86vh", overflow: "auto", padding: 16, borderRadius: 16, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(8px)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>Infos zu {idToLabel.get(infoModal.id) || infoModal.id}</div>
+              <span style={{ marginLeft: "auto", fontSize: 12, color: T.subtext }}>Status:</span>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <input type="checkbox" checked={!!infoModal.alive} onChange={(e)=>setInfoModal((m)=>({ ...m, alive: e.target.checked }))} />
+                {infoModal.alive ? "Lebendig" : "Verstorben ☠️"}
+              </label>
             </div>
-            <label style={labelS}>Typ</label>
-            <select
-              style={inputS}
-              value={edgeEdit.type}
-              onChange={(e)=>setEdgeEdit((s)=>({ ...s, type: e.target.value }))}
-            >
-              {Object.keys(EDGE_STYLE).map((k) => (
-                <option key={k} value={k}>{EDGE_STYLE[k].emoji} {EDGE_STYLE[k].label}</option>
+
+            {/* Felder-Liste */}
+            <div style={{ display: "grid", gap: 10 }}>
+              {infoModal.fields.map((f) => (
+                <div key={f.id} style={{ padding: 10, borderRadius: 12, border: `1px solid ${T.line}`, background: "rgba(255,255,255,0.65)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <div style={{ fontWeight: 700 }}>{f.label || f.kind}</div>
+                    <span style={{ fontSize: 12, color: T.subtext }}>({f.type})</span>
+                    <button onClick={()=>deleteField(f.id)} style={{ marginLeft: "auto", ...btnBase }}>Entfernen</button>
+                  </div>
+
+                  {/* Eingabeelemente je Typ */}
+                  {f.type === "text" && (
+                    <input style={inputS} value={f.value || ""} onChange={(e)=>setFieldValue(f.id, e.target.value)} placeholder="Text" />
+                  )}
+                  {f.type === "number" && (
+                    <input style={inputS} type="number" value={f.value ?? ""} onChange={(e)=>setFieldValue(f.id, e.target.value === "" ? "" : Number(e.target.value))} placeholder="Zahl" />
+                  )}
+                  {f.type === "textarea" && (
+                    <textarea style={{ ...inputS, minHeight: 80, resize: "vertical" }} value={f.value || ""} onChange={(e)=>setFieldValue(f.id, e.target.value)} placeholder="Notizen" />
+                  )}
+                  {f.type === "select" && (
+                    <select style={inputS} value={f.value || ""} onChange={(e)=>setFieldValue(f.id, e.target.value)}>
+                      {(f.options || FIELD_TEMPLATES[f.kind]?.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  )}
+                  {f.type === "tags" && (
+                    <div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                        {(f.values || []).map((t, i) => (
+                          <span key={i} style={{ padding: "4px 8px", borderRadius: 999, border: `1px solid ${T.line}`, background: "#fff", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            {t}
+                            <button onClick={()=>removeTag(f.id, i)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>✕</button>
+                          </span>
+                        ))}
+                      </div>
+                      <TagAdder onAdd={(tag)=>addTag(f.id, tag)} placeholder="Neuen Eintrag hinzufügen und Enter drücken" />
+                    </div>
+                  )}
+                </div>
               ))}
-            </select>
-            <label style={{ ...labelS, marginTop: 8 }}>Stärke: {edgeEdit.strength.toFixed(2)}</label>
-            <input
-              type="range" min={0} max={1} step={0.05}
-              value={edgeEdit.strength}
-              onChange={(e)=>setEdgeEdit((s)=>({ ...s, strength: parseFloat(e.target.value) }))}
-              style={{ width: "100%" }}
-            />
+            </div>
+
+            {/* Feld hinzufügen */}
+            <div style={{ marginTop: 12, padding: 10, borderRadius: 12, border: `1px solid ${T.line}`, background: "rgba(255,255,255,0.65)" }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Feld hinzufügen</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {Object.entries(FIELD_TEMPLATES).map(([k, t]) => (
+                  <button key={k} onClick={()=>addField(k)} style={btnBase}>{t.label}</button>
+                ))}
+              </div>
+            </div>
+
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
-              <button style={btn()} onClick={()=>setEdgeEdit((s)=>({ ...s, open:false }))}>Abbrechen</button>
-              <button style={btn(true)} onClick={saveEdgeEdit}>Speichern</button>
+              <button style={btn()} onClick={closeInfoModal}>Abbrechen</button>
+              <button style={btn(true)} onClick={saveInfoModal}>Speichern</button>
             </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+// --- kleine Hilfskomponente für Tags ---
+function TagAdder({ onAdd, placeholder }) {
+  const [v, setV] = useState("");
+  return (
+    <input
+      style={{ width: "100%", padding: "8px 10px", border: "1px solid #cfeede", borderRadius: 10, background: "rgba(255,255,255,0.9)" }}
+      value={v}
+      placeholder={placeholder || "Wert eingeben…"}
+      onChange={(e)=>setV(e.target.value)}
+      onKeyDown={(e)=>{
+        if (e.key === "Enter") {
+          const t = v.trim();
+          if (t) onAdd(t);
+          setV("");
+        }
+      }}
+    />
   );
 }
