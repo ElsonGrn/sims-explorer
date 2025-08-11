@@ -55,7 +55,7 @@ const EDGE_STYLE = {
   owner_pet: { emoji: "🐾",  color: "#f59e0b", lineStyle: "solid",  width: 2, label: "Besitzer*in/Haustier" },
 };
 
-// ====== Info-Feld-Typen (Apple-Contacts-like) ======
+// ====== Info-Feld-Typen ======
 const FIELD_TEMPLATES = {
   age:     { kind: "age",     label: "Alter",        type: "number",   singleton: true },
   job:     { kind: "job",     label: "Job",          type: "text",     singleton: true },
@@ -64,7 +64,6 @@ const FIELD_TEMPLATES = {
   occult:  { kind: "occult",  label: "Okkult",       type: "select",   singleton: true,
              options: ["Mensch","Vampir","Zauberer","Meerjungfrau","Alien","Werwolf","Pflanzensim","Skelett"] },
   notes:   { kind: "notes",   label: "Notizen",      type: "textarea", singleton: true },
-
   customText: { kind: "customText", label: "Benutzerdefiniert (Text)", type: "text", singleton: false },
   customTags: { kind: "customTags", label: "Benutzerdefiniert (Tags)", type: "tags", singleton: false },
 };
@@ -108,30 +107,34 @@ export default function SimsRelationshipExplorer() {
   const graphWrapRef = useRef(null);
   const cyRef = useRef(null);
 
-  const bgFileRef = useRef(null); // BG-Datei für Rechtsklick
+  const bgFileRef = useRef(null);
+  const galleryWrapRef = useRef(null); // <- für Galerie-Kontextmenü
   const T = THEME;
 
-  // --- State ---
+  // --- State: Daten + Ansichtsmodus ---
   const [data, setData] = useState(() => {
     try {
       const s = localStorage.getItem(LS_KEY);
       if (s) {
         const o = JSON.parse(s);
-        // Backfill: img, alive, info
         o.nodes = o.nodes.map((n) => ({
           img: "",
-          alive: n.alive !== false, // default: true
+          alive: n.alive !== false,
           info: n.info && Array.isArray(n.info.fields) ? n.info : { fields: [] },
           ...n,
         }));
         return o;
       }
     } catch {}
-    // Backfill für START_SAMPLE
     return {
       ...START_SAMPLE,
       nodes: START_SAMPLE.nodes.map((n) => ({ alive: true, info: { fields: [] }, ...n })),
     };
+  });
+
+  const [view, setView] = useState(() => {
+    try { return (JSON.parse(localStorage.getItem(LS_UI) || "{}").view) || "explorer"; } catch {}
+    return "explorer";
   });
 
   const [focusId, setFocusId] = useState("");
@@ -179,10 +182,22 @@ export default function SimsRelationshipExplorer() {
     return 0.3;
   });
 
+  // Person bearbeiten (Name/Bild)
+  const [editId, setEditId] = useState("");
+  const [editLabel, setEditLabel] = useState("");
+  const [editImgFile, setEditImgFile] = useState(null);
+
   // Person-Infos Modal
-  const [infoModal, setInfoModal] = useState({
-    open: false, id: "", alive: true, fields: [],
-  });
+  const [infoModal, setInfoModal] = useState({ open: false, id: "", alive: true, fields: [] });
+
+  // Galerie-UI
+  const [gallerySearch, setGallerySearch] = useState("");
+  const [gallerySort, setGallerySort] = useState("name_asc"); // name_asc | name_desc | age_asc | age_desc | status | occult
+  const [galleryShowInfo, setGalleryShowInfo] = useState(true);
+  const [galleryStatus, setGalleryStatus] = useState("all"); // all | alive | dead
+  const [galleryOccult, setGalleryOccult] = useState(() => new Set());
+  const [galleryTagFilter, setGalleryTagFilter] = useState(""); // filter in hobbies/traits/customTags
+  const [gCtx, setGCtx] = useState({ open:false, x:0, y:0, id:"" });
 
   const idToLabel = useMemo(() => {
     const m = new Map();
@@ -205,15 +220,23 @@ export default function SimsRelationshipExplorer() {
         setFocusId(ui.focusId || "");
         setDepth(ui.depth ?? 1);
         setOnlyNeighborhood(!!ui.onlyNeighborhood);
+        if (ui.view) setView(ui.view);
+        if (typeof ui.galleryShowInfo === "boolean") setGalleryShowInfo(ui.galleryShowInfo);
+        if (typeof ui.gallerySort === "string") setGallerySort(ui.gallerySort);
       }
     } catch {}
   }, []);
   useEffect(() => {
     const t = setTimeout(() => {
-      try { localStorage.setItem(LS_UI, JSON.stringify({ focusId, depth, onlyNeighborhood })); } catch {}
+      try {
+        localStorage.setItem(LS_UI, JSON.stringify({
+          focusId, depth, onlyNeighborhood,
+          view, galleryShowInfo, gallerySort
+        }));
+      } catch {}
     }, 150);
     return () => clearTimeout(t);
-  }, [focusId, depth, onlyNeighborhood]);
+  }, [focusId, depth, onlyNeighborhood, view, galleryShowInfo, gallerySort]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -251,8 +274,9 @@ export default function SimsRelationshipExplorer() {
     });
   }
 
-  // --- Cytoscape Setup ---
+  // --- Cytoscape Setup (Explorer) ---
   useEffect(() => {
+    if (view !== "explorer") return;
     if (!containerRef.current) return;
     const cy = cytoscape({
       container: containerRef.current,
@@ -363,7 +387,7 @@ export default function SimsRelationshipExplorer() {
       setBgCtx({ open: false, x: 0, y: 0 });
     });
 
-    // Rechtsklick: Leerer Hintergrund (Core)
+    // Rechtsklick: Leerer Hintergrund
     cy.on("cxttap", (evt) => {
       if (evt.target === cy) {
         const p = evt.renderedPosition || { x: 20, y: 20 };
@@ -373,17 +397,18 @@ export default function SimsRelationshipExplorer() {
       }
     });
 
-    // Menü schließen bei allgemeinem Tap/Zoom/Drag
+    // Menü schließen
     cy.on("tap", (evt) => { if (evt.target === cy) { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); setBgCtx({ open:false, x:0, y:0 }); }});
     cy.on("zoom", () => { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); setBgCtx({ open:false, x:0, y:0 }); });
     cy.on("drag", () => { setCtx((m)=>({ ...m, open:false })); setEdgeCtx((m)=>({ ...m, open:false })); setBgCtx({ open:false, x:0, y:0 }); });
 
     cyRef.current = cy;
     return () => cy.destroy();
-  }, [imgSize, edgeLabelMode]);
+  }, [imgSize, edgeLabelMode, view]);
 
-  // Build/Update Elemente
+  // Build/Update Elemente (Explorer)
   useEffect(() => {
+    if (view !== "explorer") return;
     const cy = cyRef.current;
     if (!cy) return;
 
@@ -427,10 +452,11 @@ export default function SimsRelationshipExplorer() {
     });
 
     runLayout();
-  }, [data]);
+  }, [data, view]);
 
-  // Sichtbarkeit, Fokus, Node-Labels
+  // Sichtbarkeit, Fokus, Node-Labels (Explorer)
   useEffect(() => {
+    if (view !== "explorer") return;
     const cy = cyRef.current;
     if (!cy) return;
 
@@ -462,7 +488,7 @@ export default function SimsRelationshipExplorer() {
     if (labelMode === "off") cy.nodes().style("label", "");
     else if (labelMode === "focus" && focusId) cy.nodes().forEach((n) => n.style("label", n.id() === focusId ? n.data("label") : ""));
     else cy.nodes().forEach((n) => n.style("label", n.data("label")));
-  }, [focusId, depth, onlyNeighborhood, visibleTypes, labelMode]);
+  }, [focusId, depth, onlyNeighborhood, visibleTypes, labelMode, view]);
 
   function runLayout() {
     const cy = cyRef.current;
@@ -520,7 +546,7 @@ export default function SimsRelationshipExplorer() {
     r.readAsDataURL(file);
   }
 
-  // Hintergrund laden/zurücksetzen (+ Menü schließen)
+  // Hintergrund laden/zurücksetzen
   function handleBgImageUpload(file) {
     if (!file) return;
     const r = new FileReader();
@@ -578,7 +604,6 @@ export default function SimsRelationshipExplorer() {
     deleteEdgeById(selectedEdgeId);
   }
 
-  // Person bearbeiten (Name/Bild) – bestehend
   function openEditPerson(id) {
     const n = data.nodes.find((x) => x.id === id);
     if (!n) return;
@@ -586,10 +611,6 @@ export default function SimsRelationshipExplorer() {
     setEditLabel(n.label || id);
     setEditImgFile(null);
   }
-  const [editId, setEditId] = useState("");
-  const [editLabel, setEditLabel] = useState("");
-  const [editImgFile, setEditImgFile] = useState(null);
-
   function closeEdit() {
     setEditId("");
     setEditLabel("");
@@ -668,13 +689,14 @@ export default function SimsRelationshipExplorer() {
     setEdgeCtx({ open: false, x: 0, y: 0, edgeId: "" });
   }
 
-  // --- Person-Infos (neues Modal) ---
+  // --- Person-Infos (Modal) ---
   function openInfoModal(nodeId) {
     const n = data.nodes.find((x) => x.id === nodeId);
     if (!n) return;
     const fields = (n.info && Array.isArray(n.info.fields)) ? deepClone(n.info.fields) : [];
     setInfoModal({ open: true, id: nodeId, alive: n.alive !== false, fields });
     setCtx((p) => ({ ...p, open: false }));
+    setGCtx({ open:false, x:0, y:0, id:"" });
   }
   function closeInfoModal() {
     setInfoModal({ open: false, id: "", alive: true, fields: [] });
@@ -691,7 +713,6 @@ export default function SimsRelationshipExplorer() {
     closeInfoModal();
   }
   function sanitizeFields(fields) {
-    // kleine Aufräumroutine
     return fields.map((f) => {
       const t = FIELD_TEMPLATES[f.kind] || {};
       const label = f.label || t.label || f.kind;
@@ -716,7 +737,6 @@ export default function SimsRelationshipExplorer() {
     const tpl = FIELD_TEMPLATES[kind];
     if (!tpl) return;
     setInfoModal((m) => {
-      // Singletons nicht doppeln
       if (tpl.singleton && m.fields.some((f) => f.kind === kind)) return m;
       const nf = {
         id: "f_" + rid(),
@@ -756,6 +776,100 @@ export default function SimsRelationshipExplorer() {
     }));
   }
 
+  // --- Galerie: abgeleitete Daten ---
+  function getField(n, kind) {
+    return (n.info?.fields || []).find((f) => f.kind === kind);
+  }
+  function getAge(n) {
+    const f = getField(n, "age");
+    return typeof f?.value === "number" ? f.value : null;
+  }
+  function getOccult(n) {
+    const f = getField(n, "occult");
+    return f?.value || "Mensch";
+  }
+  function getAllTags(n) {
+    const list = [];
+    const h = getField(n, "hobbies"); if (h?.values) list.push(...h.values);
+    const t = getField(n, "traits");  if (t?.values) list.push(...t.values);
+    const c = (n.info?.fields || []).filter((f)=>f.kind==="customTags");
+    c.forEach((f)=>{ if (Array.isArray(f.values)) list.push(...f.values); });
+    return list.map(String);
+  }
+
+  const galleryList = useMemo(() => {
+    let nodes = data.nodes.slice();
+
+    // Status-Filter
+    if (galleryStatus !== "all") {
+      nodes = nodes.filter((n) => galleryStatus === "alive" ? n.alive !== false : n.alive === false);
+    }
+    // Okkult-Filter
+    if (galleryOccult.size) {
+      nodes = nodes.filter((n) => galleryOccult.has(getOccult(n)));
+    }
+    // Tag-Filter
+    if (galleryTagFilter.trim()) {
+      const q = galleryTagFilter.toLowerCase();
+      nodes = nodes.filter((n) => getAllTags(n).some((t) => t.toLowerCase().includes(q)));
+    }
+    // Suche
+    if (gallerySearch.trim()) {
+      const q = gallerySearch.toLowerCase();
+      nodes = nodes.filter((n) => {
+        if ((n.label || n.id).toLowerCase().includes(q)) return true;
+        const textFields = (n.info?.fields || []).flatMap((f) => {
+          if (f.type === "tags") return f.values || [];
+          if (f.value) return [String(f.value)];
+          return [];
+        });
+        return textFields.some((v) => String(v).toLowerCase().includes(q));
+      });
+    }
+
+    // Sortierung
+    const coll = new Intl.Collator(undefined, { sensitivity: "base" });
+    nodes.sort((a, b) => {
+      const nameA = a.label || a.id;
+      const nameB = b.label || b.id;
+      const ageA = getAge(a); const ageB = getAge(b);
+      const aliveA = a.alive !== false ? 1 : 0;
+      const aliveB = b.alive !== false ? 1 : 0;
+      const occA = getOccult(a); const occB = getOccult(b);
+
+      switch (gallerySort) {
+        case "name_desc":
+          return coll.compare(nameB, nameA);
+        case "age_asc": {
+          const va = ageA ?? Number.POSITIVE_INFINITY;
+          const vb = ageB ?? Number.POSITIVE_INFINITY;
+          if (va !== vb) return va - vb;
+          return coll.compare(nameA, nameB);
+        }
+        case "age_desc": {
+          const va = ageA ?? Number.NEGATIVE_INFINITY;
+          const vb = ageB ?? Number.NEGATIVE_INFINITY;
+          if (va !== vb) return vb - va;
+          return coll.compare(nameA, nameB);
+        }
+        case "status": {
+          if (aliveA !== aliveB) return aliveB - aliveA;
+          return coll.compare(nameA, nameB);
+        }
+        case "occult": {
+          const c = coll.compare(occA, occB);
+          if (c !== 0) return c;
+          return coll.compare(nameA, nameB);
+        }
+        case "name_asc":
+        default:
+          return coll.compare(nameA, nameB);
+      }
+    });
+
+    return nodes;
+  }, [data, gallerySearch, gallerySort, galleryStatus, galleryOccult, galleryTagFilter]);
+
   // --- UI helpers ---
   const nodeOptions = useMemo(
     () => data.nodes.slice().sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id)),
@@ -778,6 +892,26 @@ export default function SimsRelationshipExplorer() {
     cy.fit();
   }
 
+  // Galerie: Kontextmenü öffnen (korrekte Position relativ zum Container)
+  function openGalleryCtx(e, id) {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = galleryWrapRef.current;
+    const rect = el ? el.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
+    let x = (e.clientX - rect.left) + (el?.scrollLeft || 0);
+    let y = (e.clientY - rect.top)  + (el?.scrollTop  || 0);
+    // clamp innerhalb Container
+    const menuW = 220, menuH = 150;
+    const maxX = (el?.scrollLeft || 0) + (el?.clientWidth || 0) - menuW - 8;
+    const maxY = (el?.scrollTop  || 0) + (el?.clientHeight|| 0) - menuH - 8;
+    x = Math.max(8, Math.min(x, maxX));
+    y = Math.max(8, Math.min(y, maxY));
+    setGCtx({ open: true, x, y, id });
+  }
+  function closeGalleryCtx() {
+    setGCtx({ open:false, x:0, y:0, id:"" });
+  }
+
   return (
     <div
       style={{
@@ -792,6 +926,7 @@ export default function SimsRelationshipExplorer() {
         position: "relative",
         zIndex: 0,
       }}
+      onClick={()=>closeGalleryCtx()}
     >
       {/* Globaler Hintergrund-Layer */}
       {bgImage && (
@@ -813,263 +948,482 @@ export default function SimsRelationshipExplorer() {
 
       {/* Sidebar */}
       <div>
-        {/* Top bar */}
+        {/* Top bar mit Modus-Umschalter */}
         <div style={header}>
-          <div style={{ width: 0, height: 0, borderLeft: "12px solid transparent", borderRight: "12px solid transparent", borderBottom: `22px solid ${T.accent}` }} />
-          <div style={{ fontWeight: 800, letterSpacing: .2 }}>Sims Relationship Explorer</div>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 999,
+              border: `1px solid ${T.line}`,
+              background: "rgba(255,255,255,0.9)",
+              padding: 4,
+            }}
+          >
+            <button
+              onClick={()=>setView("explorer")}
+              style={{
+                ...btnBase,
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: view==="explorer" ? T.accent : "transparent",
+                color: view==="explorer" ? "#fff" : T.text,
+                border: "none",
+              }}
+            >
+              🗺️ Explorer
+            </button>
+            <button
+              onClick={()=>setView("gallery")}
+              style={{
+                ...btnBase,
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: view==="gallery" ? T.accent : "transparent",
+                color: view==="gallery" ? "#fff" : T.text,
+                border: "none",
+              }}
+            >
+              🖼️ Galerie
+            </button>
+          </div>
+
+          <div style={{ fontWeight: 800, letterSpacing: .2, marginLeft: 8 }}>Sims Relationship Explorer</div>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
             <button style={btn()} onClick={undo} title="Rückgängig (Ctrl+Z)">↶</button>
             <button style={btn()} onClick={redo} title="Wiederholen (Ctrl+Y)">↷</button>
           </div>
         </div>
 
-        {/* Filter & Fokus */}
-        <div style={panel}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Filter & Fokus</div>
-          <label style={labelS}>Person fokussieren</label>
-          <input
-            list="people"
-            style={inputS}
-            value={idToLabel.get(focusId) || ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              const m = nodeOptions.find((n) => n.label === val || n.id === val);
-              setFocusId(m ? m.id : "");
-              setSelectedForImage(m ? m.id : "");
-            }}
-            placeholder="Namen eingeben…"
-          />
-          <datalist id="people">{nodeOptions.map((n) => <option key={n.id} value={n.label || n.id} />)}</datalist>
-
-          <div style={{ display: "flex", gap: 12, marginTop: 8, alignItems: "center" }}>
-            <label><input type="checkbox" checked={onlyNeighborhood} onChange={(e) => setOnlyNeighborhood(e.target.checked)} /> Nur Umfeld</label>
-            <span style={{ flex: 1 }} />
-            <button style={btn()} onClick={runLayout}>Auto-Layout</button>
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <label style={labelS}>Tiefe (Hops): {depth}</label>
-            <input type="range" min={1} max={3} step={1} value={depth} onChange={(e) => setDepth(parseInt(e.target.value))} style={{ width: "100%" }} />
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <label style={labelS}>Beschriftungen</label>
-            {["always", "focus", "off"].map((k) => (
-              <button key={k} onClick={() => setLabelMode(k)} style={{ ...btn(labelMode === k), marginRight: 8 }}>
-                {k === "always" ? "Immer" : k === "focus" ? "Nur Fokus" : "Aus"}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button style={btn()} onClick={() => zoom(0.2)}>＋</button>
-            <button style={btn()} onClick={() => zoom(-0.2)}>－</button>
-            <button style={btn(true)} onClick={fit}>Fit</button>
-          </div>
-        </div>
-
-        {/* Legende */}
-        <div style={panel}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Legende / Beziehungstypen</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-            <span style={{ fontSize: 12, color: T.subtext }}>Kantenlabel:</span>
-            {["emoji", "emoji+text", "off"].map((m) => (
-              <button
-                key={m}
-                onClick={() => {
-                  setEdgeLabelMode(m);
-                  const cy = cyRef.current; if (!cy) return;
-                  cy.edges().forEach((ed) => {
-                    const t = ed.data("type"); const def = EDGE_STYLE[t]; if (!def) return;
-                    const text = m === "emoji" ? def.emoji : m === "emoji+text" ? `${def.emoji} ${def.label}` : "";
-                    ed.style("label", text);
-                  });
+        {view === "explorer" ? (
+          <>
+            {/* Filter & Fokus */}
+            <div style={panel}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Filter & Fokus</div>
+              <label style={labelS}>Person fokussieren</label>
+              <input
+                list="people"
+                style={inputS}
+                value={idToLabel.get(focusId) || ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const m = nodeOptions.find((n) => n.label === val || n.id === val);
+                  setFocusId(m ? m.id : "");
+                  setSelectedForImage(m ? m.id : "");
                 }}
-                style={{ ...btn(edgeLabelMode === m) }}
-              >
-                {m === "emoji" ? "Emoji" : m === "emoji+text" ? "Emoji+Text" : "Aus"}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-            {Object.entries(EDGE_STYLE).map(([k, v]) => (
-              <label key={k} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                <input
-                  type="checkbox"
-                  checked={visibleTypes.has(k)}
-                  onChange={(e) => {
-                    const ns = new Set(visibleTypes);
-                    e.target.checked ? ns.add(k) : ns.delete(k);
-                    setVisibleTypes(ns);
-                  }}
-                />
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ width: 34, height: 0, borderBottom: `${v.width}px ${v.lineStyle} ${v.color}` }} /> {v.emoji} {v.label}
-                </span>
-              </label>
-            ))}
-          </div>
-        </div>
+                placeholder="Namen eingeben…"
+              />
+              <datalist id="people">{nodeOptions.map((n) => <option key={n.id} value={n.label || n.id} />)}</datalist>
 
-        {/* Personen */}
-        <div style={panel}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Neue Person</div>
-          <label style={labelS}>Name</label>
-          <input style={inputS} value={newPersonLabel} onChange={(e) => setNewPersonLabel(e.target.value)} placeholder="Name" />
-          <label style={labelS}>Bild (optional)</label>
-          <input type="file" accept="image/*" onChange={(e) => setNewPersonImgFile(e.target.files?.[0] || null)} style={{ marginBottom: 10 }} />
-          <button style={btn(true)} onClick={addPerson}>Hinzufügen</button>
-          <div style={{ fontSize: 12, color: T.subtext, marginTop: 6 }}>Tipp: quadratisch 512×512 für bestes Ergebnis.</div>
-        </div>
+              <div style={{ display: "flex", gap: 12, marginTop: 8, alignItems: "center" }}>
+                <label><input type="checkbox" checked={onlyNeighborhood} onChange={(e) => setOnlyNeighborhood(e.target.checked)} /> Nur Umfeld</label>
+                <span style={{ flex: 1 }} />
+                <button style={btn()} onClick={runLayout}>Auto-Layout</button>
+              </div>
 
-        {/* Beziehungen */}
-        <div style={panel}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Beziehung hinzufügen / ändern</div>
-          <label style={labelS}>Quelle</label>
-          <select value={relSource} onChange={(e) => setRelSource(e.target.value)} style={inputS}>
-            <option value="">– wählen –</option>
-            {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.label || n.id}</option>)}
-          </select>
-          <label style={labelS}>Ziel</label>
-          <select value={relTarget} onChange={(e) => setRelTarget(e.target.value)} style={inputS}>
-            <option value="">– wählen –</option>
-            {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.label || n.id}</option>)}
-          </select>
-          <label style={labelS}>Typ</label>
-          <select value={relType} onChange={(e) => setRelType(e.target.value)} style={inputS}>
-            {Object.keys(EDGE_STYLE).map((k) => <option key={k} value={k}>{EDGE_STYLE[k].emoji} {EDGE_STYLE[k].label}</option>)}
-          </select>
-          <label style={labelS}>Stärke: {relStrength.toFixed(2)}</label>
-          <input type="range" min={0} max={1} step={0.05} value={relStrength} onChange={(e) => setRelStrength(parseFloat(e.target.value))} style={{ width: "100%", marginBottom: 10 }} />
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button style={btn(true)} onClick={upsertRelationship}>Speichern</button>
-            <button style={{ ...btn(), background: "#ffecec", border: "1px solid #f5b9b9" }} disabled={!selectedEdgeId} onClick={deleteSelectedEdge}>Ausgewählte Kante löschen</button>
-          </div>
-          {selectedEdgeId && <div style={{ fontSize: 12, color: T.subtext, marginTop: 6 }}>Ausgewählte Kante: {selectedEdgeId}</div>}
-        </div>
+              <div style={{ marginTop: 10 }}>
+                <label style={labelS}>Tiefe (Hops): {depth}</label>
+                <input type="range" min={1} max={3} step={1} value={depth} onChange={(e) => setDepth(parseInt(e.target.value))} style={{ width: "100%" }} />
+              </div>
 
-        {/* Daten I/O */}
-        <div style={panel}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Daten</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <label style={{ ...btn(), display: "inline-block" }}>JSON importieren
-              <input type="file" accept="application/json" style={{ display: "none" }} onChange={(e) => e.target.files && handleImportJson(e.target.files[0])} />
-            </label>
-            <button onClick={exportJson} style={btn()}>JSON exportieren</button>
-          </div>
-          <div style={{ fontSize: 12, color: T.subtext, marginTop: 8 }}>Autosave aktiv (LocalStorage). Undo/Redo: Ctrl+Z / Ctrl+Y. Rechtsklick auf Knoten/Kanten → Menü.</div>
-        </div>
+              <div style={{ marginTop: 10 }}>
+                <label style={labelS}>Beschriftungen</label>
+                {["always", "focus", "off"].map((k) => (
+                  <button key={k} onClick={() => setLabelMode(k)} style={{ ...btn(labelMode === k), marginRight: 8 }}>
+                    {k === "always" ? "Immer" : k === "focus" ? "Nur Fokus" : "Aus"}
+                  </button>
+                ))}
+              </div>
 
-        {/* Hintergrund (Sidebar) */}
-        <div style={panel}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Hintergrund</div>
-          <label style={labelS}>Eigenes Bild auswählen</label>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => handleBgImageUpload(e.target.files?.[0] || null)}
-            style={{ marginBottom: 10 }}
-          />
-          <label style={labelS}>Transparenz: {bgOpacity.toFixed(2)}</label>
-          <input
-            type="range"
-            min={0.1}
-            max={0.9}
-            step={0.05}
-            value={bgOpacity}
-            onChange={(e) => setBgOpacity(parseFloat(e.target.value))}
-            style={{ width: "100%", marginBottom: 10 }}
-          />
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button style={btn()} onClick={clearBgImage} disabled={!bgImage}>Zurücksetzen</button>
-          </div>
-          <div style={{ fontSize: 12, color: T.subtext, marginTop: 6 }}>
-            Tipp: Ruhiges, helles Motiv verwenden. Das Bild bleibt nur lokal (LocalStorage).
-          </div>
-        </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button style={btn()} onClick={() => zoom(0.2)}>＋</button>
+                <button style={btn()} onClick={() => zoom(-0.2)}>－</button>
+                <button style={btn(true)} onClick={fit}>Fit</button>
+              </div>
+            </div>
+
+            {/* Legende */}
+            <div style={panel}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Legende / Beziehungstypen</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: T.subtext }}>Kantenlabel:</span>
+                {["emoji", "emoji+text", "off"].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => {
+                      setEdgeLabelMode(m);
+                      const cy = cyRef.current; if (!cy) return;
+                      cy.edges().forEach((ed) => {
+                        const t = ed.data("type"); const def = EDGE_STYLE[t]; if (!def) return;
+                        const text = m === "emoji" ? def.emoji : m === "emoji+text" ? `${def.emoji} ${def.label}` : "";
+                        ed.style("label", text);
+                      });
+                    }}
+                    style={{ ...btn(edgeLabelMode === m) }}
+                  >
+                    {m === "emoji" ? "Emoji" : m === "emoji+text" ? "Emoji+Text" : "Aus"}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                {Object.entries(EDGE_STYLE).map(([k, v]) => (
+                  <label key={k} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={visibleTypes.has(k)}
+                      onChange={(e) => {
+                        const ns = new Set(visibleTypes);
+                        e.target.checked ? ns.add(k) : ns.delete(k);
+                        setVisibleTypes(ns);
+                      }}
+                    />
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ width: 34, height: 0, borderBottom: `${v.width}px ${v.lineStyle} ${v.color}` }} /> {v.emoji} {v.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Personen */}
+            <div style={panel}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Neue Person</div>
+              <label style={labelS}>Name</label>
+              <input style={inputS} value={newPersonLabel} onChange={(e) => setNewPersonLabel(e.target.value)} placeholder="Name" />
+              <label style={labelS}>Bild (optional)</label>
+              <input type="file" accept="image/*" onChange={(e) => setNewPersonImgFile(e.target.files?.[0] || null)} style={{ marginBottom: 10 }} />
+              <button style={btn(true)} onClick={addPerson}>Hinzufügen</button>
+              <div style={{ fontSize: 12, color: T.subtext, marginTop: 6 }}>Tipp: quadratisch 512×512 für bestes Ergebnis.</div>
+            </div>
+
+            {/* Beziehungen */}
+            <div style={panel}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Beziehung hinzufügen / ändern</div>
+              <label style={labelS}>Quelle</label>
+              <select value={relSource} onChange={(e) => setRelSource(e.target.value)} style={inputS}>
+                <option value="">– wählen –</option>
+                {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.label || n.id}</option>)}
+              </select>
+              <label style={labelS}>Ziel</label>
+              <select value={relTarget} onChange={(e) => setRelTarget(e.target.value)} style={inputS}>
+                <option value="">– wählen –</option>
+                {nodeOptions.map((n) => <option key={n.id} value={n.id}>{n.label || n.id}</option>)}
+              </select>
+              <label style={labelS}>Typ</label>
+              <select value={relType} onChange={(e) => setRelType(e.target.value)} style={inputS}>
+                {Object.keys(EDGE_STYLE).map((k) => <option key={k} value={k}>{EDGE_STYLE[k].emoji} {EDGE_STYLE[k].label}</option>)}
+              </select>
+              <label style={labelS}>Stärke: {relStrength.toFixed(2)}</label>
+              <input type="range" min={0} max={1} step={0.05} value={relStrength} onChange={(e) => setRelStrength(parseFloat(e.target.value))} style={{ width: "100%", marginBottom: 10 }} />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button style={btn(true)} onClick={upsertRelationship}>Speichern</button>
+                <button style={{ ...btn(), background: "#ffecec", border: "1px solid #f5b9b9" }} disabled={!selectedEdgeId} onClick={deleteSelectedEdge}>Ausgewählte Kante löschen</button>
+              </div>
+              {selectedEdgeId && <div style={{ fontSize: 12, color: T.subtext, marginTop: 6 }}>Ausgewählte Kante: {selectedEdgeId}</div>}
+            </div>
+
+            {/* Daten I/O */}
+            <div style={panel}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Daten</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <label style={{ ...btn(), display: "inline-block" }}>JSON importieren
+                  <input type="file" accept="application/json" style={{ display: "none" }} onChange={(e) => e.target.files && handleImportJson(e.target.files[0])} />
+                </label>
+                <button onClick={exportJson} style={btn()}>JSON exportieren</button>
+              </div>
+              <div style={{ fontSize: 12, color: T.subtext, marginTop: 8 }}>Autosave aktiv (LocalStorage). Undo/Redo: Ctrl+Z / Ctrl+Y. Rechtsklick auf Knoten/Kanten → Menü.</div>
+            </div>
+
+            {/* Hintergrund (Sidebar) */}
+            <div style={panel}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Hintergrund</div>
+              <label style={labelS}>Eigenes Bild auswählen</label>
+              <input type="file" accept="image/*" onChange={(e) => handleBgImageUpload(e.target.files?.[0] || null)} style={{ marginBottom: 10 }} />
+              <label style={labelS}>Transparenz: {bgOpacity.toFixed(2)}</label>
+              <input type="range" min={0.1} max={0.9} step={0.05} value={bgOpacity} onChange={(e) => setBgOpacity(parseFloat(e.target.value))} style={{ width: "100%", marginBottom: 10 }} />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button style={btn()} onClick={clearBgImage} disabled={!bgImage}>Zurücksetzen</button>
+              </div>
+              <div style={{ fontSize: 12, color: T.subtext, marginTop: 6 }}>
+                Tipp: Ruhiges, helles Motiv verwenden. Das Bild bleibt nur lokal (LocalStorage).
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Galerie: Suche/Filter/Sort */}
+            <div style={panel}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Galerie</div>
+              <label style={labelS}>Suche</label>
+              <input style={inputS} value={gallerySearch} onChange={(e)=>setGallerySearch(e.target.value)} placeholder="Name, Job, Tags, …" />
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+                <div>
+                  <label style={labelS}>Sortierung</label>
+                  <select style={inputS} value={gallerySort} onChange={(e)=>setGallerySort(e.target.value)}>
+                    <option value="name_asc">Name (A–Z)</option>
+                    <option value="name_desc">Name (Z–A)</option>
+                    <option value="age_asc">Alter (aufsteigend)</option>
+                    <option value="age_desc">Alter (absteigend)</option>
+                    <option value="status">Status (Lebendig zuerst)</option>
+                    <option value="occult">Okkult → Name</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelS}>Status</label>
+                  <select style={inputS} value={galleryStatus} onChange={(e)=>setGalleryStatus(e.target.value)}>
+                    <option value="all">Alle</option>
+                    <option value="alive">Nur lebendig</option>
+                    <option value="dead">Nur verstorben</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <label style={labelS}>Okkult-Filter</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {FIELD_TEMPLATES.occult.options.map((o)=>(
+                    <label key={o} style={{ display: "inline-flex", alignItems:"center", gap:6, padding:"6px 8px", border:`1px solid ${T.line}`, borderRadius:10, background:"rgba(255,255,255,0.7)" }}>
+                      <input
+                        type="checkbox"
+                        checked={galleryOccult.has(o)}
+                        onChange={(e)=>{
+                          setGalleryOccult(prev=>{
+                            const ns = new Set(prev);
+                            e.target.checked ? ns.add(o) : ns.delete(o);
+                            return ns;
+                          });
+                        }}
+                      />
+                      {o}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <label style={labelS}>Tags enthalten (Hobbys/Merkmale)</label>
+                <input style={inputS} value={galleryTagFilter} onChange={(e)=>setGalleryTagFilter(e.target.value)} placeholder="z.B. Musik, Ordentlich, Bücherwurm…" />
+              </div>
+
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginTop: 12 }}>
+                <label style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+                  <input type="checkbox" checked={galleryShowInfo} onChange={(e)=>setGalleryShowInfo(e.target.checked)} />
+                  Infos unter dem Bild anzeigen
+                </label>
+                <span style={{ flex:1 }} />
+                <button style={btn()} onClick={()=>{
+                  setGallerySearch(""); setGalleryStatus("all"); setGalleryOccult(new Set()); setGalleryTagFilter("");
+                }}>Filter zurücksetzen</button>
+              </div>
+
+              <div style={{ fontSize: 12, color: T.subtext, marginTop: 8 }}>Tipp: Rechtsklick auf eine Karte → Infos bearbeiten oder im Explorer anzeigen.</div>
+            </div>
+
+            {/* Daten/Import */}
+            <div style={panel}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Daten</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <label style={{ ...btn(), display: "inline-block" }}>JSON importieren
+                  <input type="file" accept="application/json" style={{ display: "none" }} onChange={(e) => e.target.files && handleImportJson(e.target.files[0])} />
+                </label>
+                <button onClick={exportJson} style={btn()}>JSON exportieren</button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Graph */}
+      {/* Hauptbereich: Explorer ODER Galerie */}
       <div>
-        <div
-          ref={graphWrapRef}
-          style={{ position: "relative", width: "100%", height: "82vh", borderRadius: 18, border: `1px solid ${T.line}`, boxShadow: T.shadow, background: T.glassBg, backdropFilter: "blur(6px)" }}
-          onContextMenu={(e)=>e.preventDefault()}
-        >
-          <div ref={containerRef} style={{ position: "absolute", inset: 0, borderRadius: 18 }} />
-          {!focusId && (
-            <div style={{ position: "absolute", top: 10, left: 10, fontSize: 12, color: T.subtext, background: T.glassBg, padding: "6px 8px", border: `1px solid ${T.line}`, borderRadius: 8 }}>
-              Tipp: Rechtsklick auf Person/Kante oder in einen leeren Bereich öffnet das Menü.
-            </div>
-          )}
+        {view === "explorer" ? (
+          <div
+            ref={graphWrapRef}
+            style={{ position: "relative", width: "100%", height: "82vh", borderRadius: 18, border: `1px solid ${T.line}`, boxShadow: T.shadow, background: T.glassBg, backdropFilter: "blur(6px)" }}
+            onContextMenu={(e)=>e.preventDefault()}
+          >
+            <div ref={containerRef} style={{ position: "absolute", inset: 0, borderRadius: 18 }} />
+            {!focusId && (
+              <div style={{ position: "absolute", top: 10, left: 10, fontSize: 12, color: T.subtext, background: T.glassBg, padding: "6px 8px", border: `1px solid ${T.line}`, borderRadius: 8 }}>
+                Tipp: Rechtsklick auf Person/Kante oder in einen leeren Bereich öffnet das Menü.
+              </div>
+            )}
 
-          {/* Kontextmenü (Hintergrund) */}
-          {bgCtx.open && (
-            <div
-              style={{ position: "absolute", left: bgCtx.x, top: bgCtx.y, transform: "translateY(8px)", minWidth: 220, zIndex: 39, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ padding: "8px 10px", fontWeight: 700, color: T.subtext }}>Hintergrund</div>
-              <div style={{ height: 1, background: T.line }} />
+            {/* Kontextmenü (Hintergrund) */}
+            {bgCtx.open && (
               <div
-                style={{ padding: "8px 10px", cursor: "pointer" }}
-                onClick={() => bgFileRef.current && bgFileRef.current.click()}
+                style={{ position: "absolute", left: bgCtx.x, top: bgCtx.y, transform: "translateY(8px)", minWidth: 220, zIndex: 39, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
+                onClick={(e) => e.stopPropagation()}
               >
-                🖼️ Bild auswählen…
+                <div style={{ padding: "8px 10px", fontWeight: 700, color: T.subtext }}>Hintergrund</div>
+                <div style={{ height: 1, background: T.line }} />
+                <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => bgFileRef.current && bgFileRef.current.click()}>🖼️ Bild auswählen…</div>
+                <div style={{ padding: "8px 10px" }}>
+                  <div style={{ fontSize: 12, color: T.subtext, marginBottom: 6 }}>Transparenz: {bgOpacity.toFixed(2)}</div>
+                  <input type="range" min={0.1} max={0.9} step={0.05} value={bgOpacity} onChange={(e)=>setBgOpacity(parseFloat(e.target.value))} style={{ width: "100%" }} />
+                </div>
+                <div style={{ padding: "8px 10px", cursor: "pointer", color: "#b3261e" }} onClick={clearBgImage}>🗑️ Zurücksetzen</div>
+                <div style={{ height: 1, background: T.line }} />
+                <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => setBgCtx({ open:false, x:0, y:0 })}>Abbrechen</div>
               </div>
-              <div style={{ padding: "8px 10px" }}>
-                <div style={{ fontSize: 12, color: T.subtext, marginBottom: 6 }}>Transparenz: {bgOpacity.toFixed(2)}</div>
-                <input
-                  type="range" min={0.1} max={0.9} step={0.05}
-                  value={bgOpacity}
-                  onChange={(e)=>setBgOpacity(parseFloat(e.target.value))}
-                  style={{ width: "100%" }}
-                />
+            )}
+            <input ref={bgFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e)=>handleBgImageUpload(e.target.files?.[0] || null)} />
+
+            {/* Kontextmenü (Nodes) */}
+            {ctx.open && (
+              <div
+                style={{ position: "absolute", left: ctx.x, top: ctx.y, transform: "translateY(8px)", minWidth: 200, zIndex: 40, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => { openEditPerson(ctx.nodeId); setCtx((p) => ({ ...p, open: false })); }}>✏️ Bearbeiten…</div>
+                <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => openInfoModal(ctx.nodeId)}>ℹ️ Infos…</div>
+                <div style={{ height: 1, background: T.line }} />
+                <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => deleteAllRelationsOf(ctx.nodeId)}>🔗 Alle Beziehungen löschen</div>
+                <div style={{ padding: "8px 10px", cursor: "pointer", color: "#b3261e" }} onClick={deletePerson}>🗑️ Person entfernen</div>
+                <div style={{ height: 1, background: T.line }} />
+                <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => setCtx({ open: false, x: 0, y: 0, nodeId: "" })}>Abbrechen</div>
               </div>
-              <div style={{ padding: "8px 10px", cursor: "pointer", color: "#b3261e" }} onClick={clearBgImage}>🗑️ Zurücksetzen</div>
-              <div style={{ height: 1, background: T.line }} />
-              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => setBgCtx({ open:false, x:0, y:0 })}>Abbrechen</div>
-            </div>
-          )}
-          <input
-            ref={bgFileRef}
-            type="file"
-            accept="image/*"
-            style={{ display: "none" }}
-            onChange={(e)=>handleBgImageUpload(e.target.files?.[0] || null)}
-          />
+            )}
 
-          {/* Kontextmenü (Nodes) */}
-          {ctx.open && (
-            <div
-              style={{ position: "absolute", left: ctx.x, top: ctx.y, transform: "translateY(8px)", minWidth: 200, zIndex: 40, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => { openEditPerson(ctx.nodeId); setCtx((p) => ({ ...p, open: false })); }}>✏️ Bearbeiten…</div>
-              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => openInfoModal(ctx.nodeId)}>ℹ️ Infos…</div>
-              <div style={{ height: 1, background: T.line }} />
-              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => deleteAllRelationsOf(ctx.nodeId)}>🔗 Alle Beziehungen löschen</div>
-              <div style={{ padding: "8px 10px", cursor: "pointer", color: "#b3261e" }} onClick={deletePerson}>🗑️ Person entfernen</div>
-              <div style={{ height: 1, background: T.line }} />
-              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => setCtx({ open: false, x: 0, y: 0, nodeId: "" })}>Abbrechen</div>
-            </div>
-          )}
+            {/* Kontextmenü (Edges) */}
+            {edgeCtx.open && (
+              <div
+                style={{ position: "absolute", left: edgeCtx.x, top: edgeCtx.y, transform: "translateY(8px)", minWidth: 200, zIndex: 41, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ padding: "8px 10px", fontWeight: 700, color: T.subtext }}>Beziehung</div>
+                <div style={{ height: 1, background: T.line }} />
+                <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => openEdgeEdit(edgeCtx.edgeId)}>✏️ Bearbeiten…</div>
+                <div style={{ padding: "8px 10px", cursor: "pointer", color: "#b3261e" }} onClick={() => deleteEdgeById(edgeCtx.edgeId)}>🗑️ Löschen</div>
+                <div style={{ height: 1, background: T.line }} />
+                <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => setEdgeCtx({ open: false, x: 0, y: 0, edgeId: "" })}>Abbrechen</div>
+              </div>
+            )}
+          </div>
+        ) : (
+          // ===== Galerie =====
+          <div
+            ref={galleryWrapRef}
+            style={{
+              position: "relative",
+              width: "100%",
+              minHeight: "82vh",
+              borderRadius: 18,
+              border: `1px solid ${T.line}`,
+              boxShadow: T.shadow,
+              background: T.glassBg,
+              backdropFilter: "blur(6px)",
+              padding: 14,
+              overflow: "auto",
+            }}
+            onContextMenu={(e)=>e.preventDefault()}
+          >
+            {galleryList.length === 0 ? (
+              <div style={{ fontSize: 14, color: T.subtext }}>Keine Treffer. Prüfe Suche/Filter.</div>
+            ) : (
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+                gap: 14
+              }}>
+                {galleryList.map((n) => {
+                  const alive = n.alive !== false;
+                  const age = getAge(n);
+                  const job = getField(n, "job")?.value || "";
+                  const occ = getOccult(n);
+                  const tags = getAllTags(n);
+                  return (
+                    <div
+                      key={n.id}
+                      onContextMenu={(e)=>openGalleryCtx(e, n.id)}
+                      style={{
+                        border: `1px solid ${T.line}`,
+                        borderRadius: 16,
+                        padding: 10,
+                        background: "rgba(255,255,255,0.75)",
+                        boxShadow: T.shadow,
+                        opacity: alive ? 1 : 0.7,
+                        filter: alive ? "none" : "grayscale(20%)",
+                        position:"relative",
+                      }}
+                    >
+                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                        <div style={{ fontWeight: 800, fontSize: 16 }}>{alive ? "" : "☠️ "}{n.label || n.id}</div>
+                        <span style={{ marginLeft:"auto", fontSize:12, color:T.subtext }}>{occ}</span>
+                      </div>
 
-          {/* Kontextmenü (Edges) */}
-          {edgeCtx.open && (
-            <div
-              style={{ position: "absolute", left: edgeCtx.x, top: edgeCtx.y, transform: "translateY(8px)", minWidth: 200, zIndex: 41, borderRadius: 12, background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, overflow: "hidden" }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ padding: "8px 10px", fontWeight: 700, color: T.subtext }}>Beziehung</div>
-              <div style={{ height: 1, background: T.line }} />
-              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => openEdgeEdit(edgeCtx.edgeId)}>✏️ Bearbeiten…</div>
-              <div style={{ padding: "8px 10px", cursor: "pointer", color: "#b3261e" }} onClick={() => deleteEdgeById(edgeCtx.edgeId)}>🗑️ Löschen</div>
-              <div style={{ height: 1, background: T.line }} />
-              <div style={{ padding: "8px 10px", cursor: "pointer" }} onClick={() => setEdgeCtx({ open: false, x: 0, y: 0, edgeId: "" })}>Abbrechen</div>
-            </div>
-          )}
-        </div>
+                      <div
+                        style={{
+                          width:"100%", aspectRatio:"1/1", borderRadius: 14, overflow:"hidden",
+                          border: `1px solid ${T.line}`, background:"#f3f4f6",
+                          display:"grid", placeItems:"center"
+                        }}
+                      >
+                        {n.img ? (
+                          <img src={n.img} alt={n.label} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                        ) : (
+                          <div style={{ fontSize: 38, color:"#64748b", fontWeight:700 }}>
+                            {(n.label || n.id).slice(0,2).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+
+                      {galleryShowInfo && (
+                        <div style={{ marginTop: 8, fontSize: 13, color: T.subtext }}>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                            {typeof age === "number" && <Chip>Alter: {age}</Chip>}
+                            {job && <Chip>Job: {job}</Chip>}
+                            {occ && <Chip>Okkult: {occ}</Chip>}
+                          </div>
+                          {!!tags.length && (
+                            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:6 }}>
+                              {tags.slice(0,12).map((t,i)=> <Tag key={i}>{t}</Tag>)}
+                              {tags.length>12 && <span style={{ fontSize:12, opacity:.7 }}>+{tags.length-12} weitere</span>}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Quick actions */}
+                      <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                        <button style={btn()} onClick={()=>openInfoModal(n.id)}>Infos…</button>
+                        <button style={btn()} onClick={()=>{ setFocusId(n.id); setView("explorer"); }}>Im Explorer</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Kontextmenü Galerie-Karte */}
+            {gCtx.open && (
+              <div
+                style={{
+                  position:"absolute",  // wichtig: relativ zum Container
+                  left:gCtx.x,
+                  top:gCtx.y,
+                  transform:"translateY(8px)",
+                  minWidth: 180,
+                  zIndex: 60,
+                  borderRadius: 12,
+                  background: T.glassBg,
+                  border:`1px solid ${T.line}`,
+                  boxShadow: T.shadow,
+                  overflow:"hidden"
+                }}
+                onClick={(e)=>e.stopPropagation()}
+              >
+                <div style={{ padding:"8px 10px", cursor:"pointer" }} onClick={()=>openInfoModal(gCtx.id)}>ℹ️ Infos…</div>
+                <div style={{ padding:"8px 10px", cursor:"pointer" }} onClick={()=>{
+                  setFocusId(gCtx.id); setView("explorer"); closeGalleryCtx();
+                }}>🗺️ Im Explorer fokussieren</div>
+                <div style={{ height:1, background:T.line }} />
+                <div style={{ padding:"8px 10px", cursor:"pointer" }} onClick={()=>closeGalleryCtx()}>Abbrechen</div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Edit-Modal (Nodes) */}
@@ -1113,7 +1467,6 @@ export default function SimsRelationshipExplorer() {
                     <button onClick={()=>deleteField(f.id)} style={{ marginLeft: "auto", ...btnBase }}>Entfernen</button>
                   </div>
 
-                  {/* Eingabeelemente je Typ */}
                   {f.type === "text" && (
                     <input style={inputS} value={f.value || ""} onChange={(e)=>setFieldValue(f.id, e.target.value)} placeholder="Text" />
                   )}
@@ -1166,7 +1519,21 @@ export default function SimsRelationshipExplorer() {
   );
 }
 
-// --- kleine Hilfskomponente für Tags ---
+// --- kleine UI-Helfer ---
+function Chip({ children }) {
+  return (
+    <span style={{ padding:"2px 8px", borderRadius: 999, border:"1px solid #cfeede", background:"#fff", fontSize:12 }}>
+      {children}
+    </span>
+  );
+}
+function Tag({ children }) {
+  return (
+    <span style={{ padding:"2px 8px", borderRadius: 999, border:"1px solid #cfeede", background:"#ffffffc7", fontSize:12 }}>
+      {children}
+    </span>
+  );
+}
 function TagAdder({ onAdd, placeholder }) {
   const [v, setV] = useState("");
   return (
