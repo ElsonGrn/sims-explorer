@@ -42,7 +42,12 @@ export default function SimsRelationshipExplorer() {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) {
         const o = JSON.parse(raw);
-        o.nodes = o.nodes.map(n => ({ alive: n.alive !== false, info: n.info && Array.isArray(n.info.fields) ? n.info : { fields: [] }, ...n, img: n.img || "" }));
+        o.nodes = o.nodes.map(n => ({
+          alive: n.alive !== false,
+          info: n.info && Array.isArray(n.info.fields) ? n.info : { fields: [] },
+          ...n,
+          img: n.img || ""
+        }));
         return o;
       }
     } catch {}
@@ -69,13 +74,13 @@ export default function SimsRelationshipExplorer() {
   const [relStrength, setRelStrength] = useState(0.8);
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
 
-  // Hintergrund (global)
+  // Hintergrund (nur Galerie verwendet)
   const [bgImage, setBgImage] = useState(() => localStorage.getItem(LS_BG_IMG) || "");
   const [bgOpacity, setBgOpacity] = useState(() => {
     const v = parseFloat(localStorage.getItem(LS_BG_OPA));
     return Number.isFinite(v) ? v : 0.3;
   });
-  
+
   // InfoModal
   const [infoModal, setInfoModal] = useState({ open:false, id:"" });
 
@@ -85,7 +90,7 @@ export default function SimsRelationshipExplorer() {
   useEffect(() => { try { bgImage ? localStorage.setItem(LS_BG_IMG, bgImage) : localStorage.removeItem(LS_BG_IMG);} catch {} }, [bgImage]);
   useEffect(() => { try { localStorage.setItem(LS_BG_OPA, String(bgOpacity)); } catch {} }, [bgOpacity]);
 
-  // 🔁 NEU: Event-Fallback – nimmt Updates aus der Galerie (CustomEvent) sicher an
+  // Event-Fallback – nimmt Updates aus der Galerie (CustomEvent) sicher an
   useEffect(() => {
     const onUpdate = (e) => {
       const { nodes, edges } = e.detail || {};
@@ -106,7 +111,12 @@ export default function SimsRelationshipExplorer() {
       try {
         const o = JSON.parse(String(r.result));
         if (!o.nodes || !o.edges) throw new Error("Erwarte keys 'nodes' & 'edges'");
-        o.nodes = o.nodes.map((n) => ({ alive:n.alive!==false, info:n.info&&Array.isArray(n.info.fields)?n.info:{fields:[]}, img:"", ...n }));
+        o.nodes = o.nodes.map((n) => ({
+          alive:n.alive!==false,
+          info:n.info&&Array.isArray(n.info.fields)?n.info:{fields:[]},
+          img:"",
+          ...n
+        }));
         setData(o);
         setFocusId("");
       } catch (e) {
@@ -133,6 +143,7 @@ export default function SimsRelationshipExplorer() {
     const commit = (img) => {
       setData(prev => ({ ...prev, nodes:[...prev.nodes, { id, label:newPersonLabel.trim(), img: img || "", alive:true, info:{ fields:[] } }] }));
       setNewPersonLabel("");
+      setNewPersonImgFile(null);
     };
     if (newPersonImgFile) {
       const r = new FileReader(); r.onload = () => commit(String(r.result)); r.readAsDataURL(newPersonImgFile);
@@ -160,7 +171,7 @@ export default function SimsRelationshipExplorer() {
     setSelectedEdgeId("");
   }
 
-  // BG helpers
+  // BG helpers (nur Galerie nutzt diese Props)
   const onBgUpload = (src) => setBgImage(src);
   const onBgOpacity = (v) => setBgOpacity(v);
   const onBgClear = () => setBgImage("");
@@ -188,14 +199,10 @@ export default function SimsRelationshipExplorer() {
     <div
       style={{
         display:"grid", gridTemplateColumns:"380px 1fr", gap:18, padding:18, minHeight:"100vh",
-        background: bgImage ? "transparent" : T.bg, color:T.text, fontFamily:"Inter, system-ui, Arial, sans-serif", position:"relative"
+        background: T.bg, // ⟵ kein globales BG-Bild mehr
+        color:T.text, fontFamily:"Inter, system-ui, Arial, sans-serif", position:"relative"
       }}
     >
-      {/* globaler BG-Layer */}
-      {bgImage && (
-        <div style={{ position:"fixed", inset:0, backgroundImage:`url(${bgImage})`, backgroundSize:"cover", backgroundPosition:"center", backgroundRepeat:"no-repeat", opacity:bgOpacity, pointerEvents:"none", zIndex:-1 }} />
-      )}
-
       {/* Sidebar */}
       <div>
         <div style={header}>
@@ -301,29 +308,10 @@ export default function SimsRelationshipExplorer() {
                 <button onClick={exportJson} style={btn()}>JSON exportieren</button>
               </div>
             </div>
-
-            <div style={panel}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>Hintergrund</div>
-              <label style={labelS}>Eigenes Bild auswählen</label>
-              <input type="file" accept="image/*" onChange={(e)=>{ const f=e.target.files?.[0]; if (f){ const r=new FileReader(); r.onload=()=>setBgImage(String(r.result)); r.readAsDataURL(f);} }} style={{ marginBottom:10 }} />
-              <label style={labelS}>Transparenz: {bgOpacity.toFixed(2)}</label>
-              <input type="range" min={0.1} max={0.9} step={0.05} value={bgOpacity} onChange={(e)=>setBgOpacity(parseFloat(e.target.value))} style={{ width:"100%", marginBottom:10 }} />
-              <button style={btn()} onClick={()=>setBgImage("")} disabled={!bgImage}>Zurücksetzen</button>
-            </div>
           </>
         ) : (
           <>
-            {/* Galerie-Sidebar */}
-            <div style={panel}>
-              <div style={{ fontWeight:700, marginBottom:6 }}>Hintergrund</div>
-              <label style={labelS}>Eigenes Bild auswählen</label>
-              <input type="file" accept="image/*" onChange={(e)=>{ const f=e.target.files?.[0]; if (f){ const r=new FileReader(); r.onload=()=>setBgImage(String(r.result)); r.readAsDataURL(f);} }} style={{ marginBottom:10 }} />
-              <label style={labelS}>Transparenz: {bgOpacity.toFixed(2)}</label>
-              <input type="range" min={0.1} max={0.9} step={0.05} value={bgOpacity} onChange={(e)=>setBgOpacity(parseFloat(e.target.value))} style={{ width:"100%", marginBottom:10 }} />
-              <button style={btn()} onClick={()=>setBgImage("")} disabled={!bgImage}>Zurücksetzen</button>
-              <div style={{ fontSize:12, color:T.subtext, marginTop:8 }}>Tipp: Rechtsklick auf freien Bereich öffnet das Hintergrund-Menü.</div>
-            </div>
-
+            {/* Galerie-Sidebar (nur Daten – Hintergrund steuert die Galerie selbst in ihrer Toolbar) */}
             <div style={panel}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Daten</div>
               <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
@@ -337,7 +325,7 @@ export default function SimsRelationshipExplorer() {
         )}
       </div>
 
-      {/* Content – Views sind getrennte Dateien */}
+      {/* Content – Views */}
       <div key={view}>
         {view === "explorer" ? (
           <ExplorerView
@@ -359,11 +347,7 @@ export default function SimsRelationshipExplorer() {
             }}
             THEME={THEME}
             EDGE_STYLE={EDGE_STYLE}
-            bgImage={bgImage}
-            bgOpacity={bgOpacity}
-            onBgUpload={onBgUpload}
-            onBgOpacity={onBgOpacity}
-            onBgClear={onBgClear}
+            /* ⟵ KEIN bgImage/bgOpacity mehr hier */
             onOpenInfo={openInfo}
           />
         ) : (
@@ -373,14 +357,16 @@ export default function SimsRelationshipExplorer() {
             FIELD_TEMPLATES={FIELD_TEMPLATES}
             onOpenInfo={openInfo}
             onFocusInExplorer={(id)=>{ setFocusId(id); setView("explorer"); }}
+
+            /* Hintergrund nur für Galerie */
             bgImage={bgImage}
             bgOpacity={bgOpacity}
             onBgUpload={onBgUpload}
             onBgOpacity={onBgOpacity}
             onBgClear={onBgClear}
+
             onChange={(next)=>setData(next)}
           />
-
         )}
       </div>
 
