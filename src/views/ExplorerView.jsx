@@ -1,3 +1,4 @@
+// src/views/ExplorerView.jsx
 import React, { useEffect, useRef, useState } from "react";
 import cytoscape from "cytoscape";
 import coseBilkent from "cytoscape-cose-bilkent";
@@ -20,12 +21,13 @@ export default function ExplorerView({
   bgOpacity,
   onBgUpload, onBgOpacity, onBgClear,
   onOpenInfo,              // (nodeId) => void
+  onRequestCreateSim,      // ✅ NEU: vom Parent das „Create“-Modal öffnen
 }) {
   const T = THEME;
   const wrapRef = useRef(null);
   const cyRef = useRef(null);
 
-  // Kontextmenüs & Edit-States innerhalb der View
+  // Kontextmenüs & Edit-States
   const [ctx, setCtx] = useState({ open:false, x:0, y:0, nodeId:"" });
   const [edgeCtx, setEdgeCtx] = useState({ open:false, x:0, y:0, edgeId:"" });
   const [bgCtx, setBgCtx] = useState({ open:false, x:0, y:0 });
@@ -110,7 +112,7 @@ export default function ExplorerView({
       setBgCtx({ open:false, x:0, y:0 });
     });
 
-    // Kantenlabels initialisieren
+    // Kantenlabels initial
     cy.on("add data", "edge", (e) => {
       const ed = e.target;
       const t = ed.data("type");
@@ -288,28 +290,37 @@ export default function ExplorerView({
 
   return (
     <div style={{ position:"relative", height:"82vh", borderRadius:18, border:`1px solid ${T.line}`, boxShadow:T.shadow, background:T.glassBg, backdropFilter:"blur(6px)" }}>
-      {/* BG Overlay (global kommt aus Parent, hier nur Hinweis) */}
       <div ref={wrapRef} style={{ position:"absolute", inset:0, borderRadius:18 }} />
 
       {/* Kontextmenü Hintergrund */}
       {bgCtx.open && (
         <div
-          style={{ position:"absolute", left:bgCtx.x, top:bgCtx.y, transform:"translateY(8px)", minWidth:220, zIndex:39, borderRadius:12, background:T.glassBg, border:`1px solid ${T.line}`, boxShadow:T.shadow, overflow:"hidden" }}
+          style={{ position:"absolute", left:bgCtx.x, top:bgCtx.y, transform:"translateY(8px)", minWidth:240, zIndex:39, borderRadius:12, background:T.glassBg, border:`1px solid ${T.line}`, boxShadow:T.shadow, overflow:"hidden" }}
           onClick={(e)=>e.stopPropagation()}
         >
-          <div style={{ padding:"8px 10px", fontWeight:700, color:T.subtext }}>Hintergrund</div>
-          <div style={{ height:1, background:T.line }} />
-          <label style={{ padding:"8px 10px", cursor:"pointer", display:"block" }}>
-            🖼️ Bild auswählen…
-            <input type="file" accept="image/*" style={{ display:"none" }} onChange={(e)=>{ const f=e.target.files?.[0]; if (f) { const r=new FileReader(); r.onload=()=>onBgUpload(String(r.result)); r.readAsDataURL(f); } }} />
-          </label>
-          <div style={{ padding:"8px 10px" }}>
-            <div style={{ fontSize:12, color:T.subtext, marginBottom:6 }}>Transparenz: {bgOpacity.toFixed(2)}</div>
-            <input type="range" min={0.1} max={0.9} step={0.05} value={bgOpacity} onChange={(e)=>onBgOpacity(parseFloat(e.target.value))} style={{ width:"100%" }} />
+          {/* ✅ Neuer Sim */}
+          <div
+            style={{ padding:"10px 12px", cursor:"pointer", borderBottom:`1px solid ${T.line}` }}
+            onClick={()=>{ onRequestCreateSim?.(); setBgCtx({ open:false, x:0, y:0 }); }}
+          >
+            ➕ Neuen Sim anlegen…
           </div>
-          <div style={{ padding:"8px 10px", cursor:"pointer", color:"#b3261e" }} onClick={onBgClear}>🗑️ Zurücksetzen</div>
+
+          {/* Optional: Background-Werkzeuge (wie gehabt) */}
+          <label style={{ padding:"10px 12px", cursor:"pointer", display:"block" }}>
+            🖼️ Hintergrundbild auswählen…
+            <input
+              type="file" accept="image/*" style={{ display:"none" }}
+              onChange={(e)=>{ const f=e.target.files?.[0]; if (f) { const r=new FileReader(); r.onload=()=>onBgUpload?.(String(r.result)); r.readAsDataURL(f); } }}
+            />
+          </label>
+          <div style={{ padding:"8px 12px" }}>
+            <div style={{ fontSize:12, color:T.subtext, marginBottom:6 }}>Transparenz: {bgOpacity.toFixed(2)}</div>
+            <input type="range" min={0.1} max={0.9} step={0.05} value={bgOpacity} onChange={(e)=>onBgOpacity?.(parseFloat(e.target.value))} style={{ width:"100%" }} />
+          </div>
+          <div style={{ padding:"10px 12px", cursor:"pointer", color:"#b3261e" }} onClick={()=>onBgClear?.()}>🗑️ Hintergrund zurücksetzen</div>
           <div style={{ height:1, background:T.line }} />
-          <div style={{ padding:"8px 10px", cursor:"pointer" }} onClick={()=>setBgCtx({ open:false, x:0, y:0 })}>Abbrechen</div>
+          <div style={{ padding:"10px 12px", cursor:"pointer" }} onClick={()=>setBgCtx({ open:false, x:0, y:0 })}>Abbrechen</div>
         </div>
       )}
 
