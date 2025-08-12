@@ -64,3 +64,119 @@ export const FIELD_TEMPLATES = {
   customText: { kind: "customText", label: "Benutzerdefiniert (Text)", type: "text", singleton: false },
   customTags: { kind: "customTags", label: "Benutzerdefiniert (Tags)", type: "tags", singleton: false },
 };
+// --- Okkult ---
+export const OCCULT_TYPES = [
+  "Mensch",
+  "Alien",
+  "Vampir",
+  "Meerjungfrau/-mann",
+  "Zauberer/Hexe (Spellcaster)",
+  "Werwolf",
+  "Pflanzensim",
+  "Servo",
+  "Skelett (temporär)"
+];
+
+// --- Alter ---
+export const AGE_GROUPS = [
+  "Baby",
+  "Kleinkind",
+  "Kind",
+  "Teen",
+  "Junger Erwachsener",
+  "Erwachsener",
+  "Senior"
+];
+
+// --- Discover University Studiengänge ---
+export const UNIVERSITY_DEGREES = [
+  "Kunstgeschichte",
+  "Schöne Künste",
+  "Kommunikation",
+  "Sprache & Literatur",
+  "Philosophie",
+  "Geschichte",
+  "Psychologie",
+  "Biologie",
+  "Informatik",
+  "Physik",
+  "Ökonomie",
+  "Kulinarik",
+  "Schauspiel/Drama",
+  "Schurkerei/Villainy"
+];
+
+// --- Karrieren nach Gruppen (Basegame + gängige DLCs/Updates) ---
+export const CAREERS_BY_GROUP = {
+  "Vollzeit": [
+    "Astronaut",
+    "Athlet",
+    "Business",
+    "Kriminell",
+    "Koch/Kulinarik (Karriere)",
+    "Entertainer",
+    "Maler",
+    "Geheimagent",
+    "Tech-Guru",
+    "Autor/Schriftsteller",
+    "Style-Influencer",
+    "Gärtner",
+    "Politiker",
+    "Kritiker",
+    "Social Media",
+    "Militär",
+    "Civil Designer",
+    "Salaryperson",
+    "Bildung (Lehrer)",
+    "Ingenieur",
+    "Jura (Recht)",
+    "Naturschützer (Conservationist)"
+  ],
+  "Aktiv (Pack-Karrieren)": [
+    "Arzt (aktiv)",
+    "Detektiv (aktiv)",
+    "Wissenschaftler (aktiv)",
+    "Schauspieler (aktiv)",
+    "Innenarchitekt (aktiv)"
+  ],
+  "Teilzeit/Nebenjob": [
+    "Barista",
+    "Verkauf (Einzelhandel/Regal)",
+    "Fast-Food",
+    "Babysitter",
+    "Handarbeiter (Manuelle Arbeit)",
+    "Fischer",
+    "Rettungsschwimmer",
+    "Taucher",
+    "Kurrier/Essenslieferung",
+    "Kurier/Lebensmittel (Dorfboten)",
+    "Simfluencer",
+    "Video-Game-Streamer",
+    "Scout (Aktivität)"
+  ],
+  "Freelancer": [
+    "Freelancer: Programmierer",
+    "Freelancer: Schreiber",
+    "Freelancer: Künstler (Digital)",
+    "Freelancer: Modefotograf",
+    "Freelancer: Paranormal-Ermittler"
+  ],
+  "Unternehmer": [
+    "Tierarzt (Klinikbesitzer)",
+    "Einzelhandel (Geschäftsinhaber)"
+  ]
+};
+
+// flache Liste für Dropdowns, wenn ohne <optgroup> gearbeitet wird:
+export const CAREERS = Object.values(CAREERS_BY_GROUP).flat();
+
+// --- Sonstiges UI-Default (falls von dir genutzt) ---
+export const DEFAULT_UI = {
+  galleryBg: null,
+  gallerySort: "name_asc",
+  galleryFilter: "",
+};
+
+// Keys für LocalStorage (falls genutzt)
+export const DATA_KEY = "simsExplorerDataV1";
+export const UI_KEY   = "simsExplorerUiV1";

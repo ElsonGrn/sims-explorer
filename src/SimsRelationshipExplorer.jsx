@@ -74,7 +74,7 @@ export default function SimsRelationshipExplorer() {
     const v = parseFloat(localStorage.getItem(LS_BG_OPA));
     return Number.isFinite(v) ? v : 0.3;
   });
-
+  
   // InfoModal
   const [infoModal, setInfoModal] = useState({ open:false, id:"" });
 

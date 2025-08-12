@@ -1,233 +1,374 @@
-import React, { useMemo, useRef, useState } from "react";
+// Pfad ggf. anpassen: view vs views
+import React, { useMemo, useState } from "react";
+import "../shared/theme.css";
+import InfoModal from "../shared/InfoModal.jsx";
+import {
+  OCCULT_TYPES,
+  AGE_GROUPS,
+  UNIVERSITY_DEGREES,
+  CAREERS_BY_GROUP,
+  CAREERS
+} from "../shared/constants.js";
 
 export default function GalleryView({
   data,
-  THEME,
-  onOpenInfo,
-  onFocusInExplorer,
-  FIELD_TEMPLATES,
-  bgImage, bgOpacity,
+  onChange,            // optional – sonst Event-Bridge
+  onOpenInfo,          // optional
+  onFocusInExplorer,   // optional
+  bgImage, bgOpacity = 0.25,
   onBgUpload, onBgOpacity, onBgClear,
 }) {
-  const T = THEME;
-  const wrapRef = useRef(null);
+  const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+  const edges = Array.isArray(data?.edges) ? data.edges : [];
+
+  // Suche & Filter
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState("name_asc");
-  const [status, setStatus] = useState("all"); // all | alive | dead
-  const [occult, setOccult] = useState(new Set());
-  const [tagFilter, setTagFilter] = useState("");
-  const [ctx, setCtx] = useState({ open:false, x:0, y:0, id:"" });
-  const [bgCtx, setBgCtx] = useState({ open:false, x:0, y:0 });
+  const [status, setStatus] = useState("all");      // all | alive | dead
+  const [fOccult, setFOccult] = useState("");       // "" = alle
+  const [fCareer, setFCareer] = useState("");       // "" = alle
+  const [fAge, setFAge]       = useState("");       // "" = alle
 
-  function getField(n, kind) { return (n.info?.fields||[]).find(f=>f.kind===kind); }
-  function getAge(n) { const f=getField(n,"age"); return typeof f?.value==="number" ? f.value : null; }
-  function getOccult(n) { const f=getField(n,"occult"); return f?.value || "Mensch"; }
-  function getAllTags(n) {
-    const list = [];
-    const h=getField(n,"hobbies"); if (h?.values) list.push(...h.values);
-    const t=getField(n,"traits");  if (t?.values) list.push(...t.values);
-    const c=(n.info?.fields||[]).filter(f=>f.kind==="customTags"); c.forEach(f=>{ if (Array.isArray(f.values)) list.push(...f.values); });
-    return list.map(String);
-  }
+  // Sort (nur Name)
+  const [sort, setSort] = useState("name_asc");     // name_asc | name_desc
 
-  const list = useMemo(()=>{
-    let nodes = data.nodes.slice();
-    // Status
-    if (status !== "all") nodes = nodes.filter(n => status==="alive" ? n.alive!==false : n.alive===false);
-    // Okkult
-    if (occult.size) nodes = nodes.filter(n => occult.has(getOccult(n)));
-    // Tags
-    if (tagFilter.trim()) {
-      const q = tagFilter.toLowerCase();
-      nodes = nodes.filter(n => getAllTags(n).some(t => t.toLowerCase().includes(q)));
+  // Liste filtern/sortieren
+  const people = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let list = [...nodes];
+    if (q) list = list.filter(n => (n.label ?? n.id).toLowerCase().includes(q));
+    if (status !== "all") {
+      const aliveWanted = status === "alive";
+      list = list.filter(n => (n.alive !== false) === aliveWanted);
     }
-    // Suche
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      nodes = nodes.filter(n => {
-        if ((n.label||n.id).toLowerCase().includes(q)) return true;
-        const textFields = (n.info?.fields||[]).flatMap(f => f.type==="tags" ? (f.values||[]) : (f.value ? [String(f.value)] : []));
-        return textFields.some(v => String(v).toLowerCase().includes(q));
-      });
-    }
-    const coll = new Intl.Collator(undefined,{sensitivity:"base"});
-    nodes.sort((a,b)=>{
-      const nameA=a.label||a.id, nameB=b.label||b.id;
-      const ageA=getAge(a), ageB=getAge(b);
-      const aliveA=a.alive!==false?1:0, aliveB=b.alive!==false?1:0;
-      const occA=getOccult(a), occB=getOccult(b);
-      switch (sort) {
-        case "name_desc": return coll.compare(nameB, nameA);
-        case "age_asc":  return (ageA??1e9) - (ageB??1e9) || coll.compare(nameA,nameB);
-        case "age_desc": return (ageB??-1e9) - (ageA??-1e9) || coll.compare(nameA,nameB);
-        case "status":   return aliveB - aliveA || coll.compare(nameA,nameB);
-        case "occult":   return coll.compare(occA,occB) || coll.compare(nameA,nameB);
-        default:         return coll.compare(nameA, nameB);
-      }
+    if (fOccult) list = list.filter(n => (n.occult || "Mensch") === fOccult);
+    if (fCareer) list = list.filter(n => (n.career || "") === fCareer);
+    if (fAge)    list = list.filter(n => (n.age || "") === fAge);
+
+    list.sort((a,b) => (a.label ?? a.id).localeCompare(b.label ?? b.id));
+    if (sort === "name_desc") list.reverse();
+    return list;
+  }, [nodes, search, status, fOccult, fCareer, fAge, sort]);
+
+  // Kontextmenü minimal (zwei Aktionen)
+  const [menu, setMenu] = useState({ open:false, x:0, y:0, sim:null });
+  const openMenu = (e, sim) => { e.preventDefault(); setMenu({ open:true, x:e.clientX, y:e.clientY, sim }); };
+  const closeMenu = () => setMenu(m => ({ ...m, open:false }));
+
+  // Edit-Modal
+  const [editSimId, setEditSimId] = useState(null);
+  const [form, setForm] = useState({
+    id:"", label:"", alive:true, traits:[], notes:"",
+    age:"", occult:"Mensch",
+    career:"", careerLevel:"",
+    household:"", world:"",
+    fame: 0,
+    degree: "",
+    aspiration: "",
+    likes: [], dislikes: []
+  });
+
+  const startEdit = (sim) => {
+    if (!sim) return;
+    setEditSimId(sim.id);
+    setForm({
+      id: sim.id,
+      label: (sim.label || sim.id || "").toString(),
+      alive: sim.alive !== false,
+      traits: Array.isArray(sim.traits) ? sim.traits : [],
+      notes: (sim.notes || "").toString(),
+      age: sim.age || "",
+      occult: sim.occult || "Mensch",
+      career: sim.career || "",
+      careerLevel: sim.careerLevel || "",
+      household: sim.household || "",
+      world: sim.world || "",
+      fame: Number.isFinite(sim.fame) ? sim.fame : 0,
+      degree: sim.degree || "",
+      aspiration: sim.aspiration || "",
+      likes: Array.isArray(sim.likes) ? sim.likes : [],
+      dislikes: Array.isArray(sim.dislikes) ? sim.dislikes : [],
+      img: sim.img || null,
     });
-    return nodes;
-  }, [data, search, sort, status, occult, tagFilter]);
+  };
 
-  function openCardCtx(e, id) {
-    e.preventDefault(); e.stopPropagation();
-    const el = wrapRef.current;
-    const r = el?.getBoundingClientRect() || { left:0, top:0, width:0, height:0 };
-    let x=(e.clientX - r.left) + (el?.scrollLeft||0);
-    let y=(e.clientY - r.top) + (el?.scrollTop||0);
-    const menuW=220, menuH=150;
-    const maxX=(el?.scrollLeft||0)+(el?.clientWidth||0)-menuW-8;
-    const maxY=(el?.scrollTop||0)+(el?.clientHeight||0)-menuH-8;
-    x = Math.max(8, Math.min(x, maxX));
-    y = Math.max(8, Math.min(y, maxY));
-    setCtx({ open:true, x, y, id });
-    setBgCtx({ open:false, x:0, y:0 });
-  }
-  function openBgCtx(e) {
-    e.preventDefault();
-    const el = wrapRef.current;
-    const r = el?.getBoundingClientRect() || { left:0, top:0, width:0, height:0 };
-    let x=(e.clientX - r.left) + (el?.scrollLeft||0);
-    let y=(e.clientY - r.top) + (el?.scrollTop||0);
-    const menuW=220, menuH=160;
-    const maxX=(el?.scrollLeft||0)+(el?.clientWidth||0)-menuW-8;
-    const maxY=(el?.scrollTop||0)+(el?.clientHeight||0)-menuH-8;
-    x = Math.max(8, Math.min(x, maxX));
-    y = Math.max(8, Math.min(y, maxY));
-    setCtx({ open:false, x:0, y:0, id:"" });
-    setBgCtx({ open:true, x, y });
-  }
+  const applyChange = (nextNodes, nextEdges = edges) => {
+    if (typeof onChange === "function") onChange({ nodes: nextNodes, edges: nextEdges });
+    else window.dispatchEvent(new CustomEvent("sims:updateData", { detail: { nodes: nextNodes, edges: nextEdges } }));
+  };
+
+  const saveEdit = () => {
+    const next = nodes.map(n => n.id === form.id ? {
+      ...n,
+      label: form.label.trim() || n.id,
+      alive: !!form.alive,
+      traits: Array.from(new Set((form.traits || []).filter(Boolean))),
+      notes: form.notes,
+      age: form.age || "",
+      occult: form.occult || "Mensch",
+      career: form.career || "",
+      careerLevel: form.careerLevel || "",
+      household: form.household || "",
+      world: form.world || "",
+      fame: Number(form.fame) || 0,
+      degree: form.degree || "",
+      aspiration: form.aspiration || "",
+      likes: Array.from(new Set((form.likes || []).filter(Boolean))),
+      dislikes: Array.from(new Set((form.dislikes || []).filter(Boolean))),
+      img: form.img || null,
+    } : n);
+    applyChange(next);
+    setEditSimId(null);
+  };
+
+  const deleteSim = (simId) => {
+    const nextNodes = nodes.filter(n => n.id !== simId);
+    const nextEdges = edges.filter(e => e.source !== simId && e.target !== simId);
+    applyChange(nextNodes, nextEdges);
+  };
+
+  const pickImage = (onLoaded) => {
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "image/*";
+    input.onchange = () => {
+      const f = input.files?.[0]; if (!f) return;
+      const r = new FileReader();
+      r.onload = () => onLoaded(r.result);
+      r.readAsDataURL(f);
+    };
+    input.click();
+  };
+
+  const focusInExplorer = (id) => {
+    if (typeof onFocusInExplorer === "function") onFocusInExplorer(id);
+    else window.dispatchEvent(new CustomEvent("sims:focusNode", { detail:{ id } }));
+  };
+
+  const rootStyle = {
+    backgroundImage: bgImage
+      ? `linear-gradient(rgba(255,255,255,${bgOpacity}), rgba(255,255,255,${bgOpacity})), url(${bgImage})`
+      : undefined,
+    backgroundSize: bgImage ? "cover" : undefined,
+    backgroundPosition: bgImage ? "center" : undefined,
+  };
 
   return (
-    <div
-      ref={wrapRef}
-      style={{ position:"relative", minHeight:"82vh", borderRadius:18, border:`1px solid ${T.line}`, boxShadow:T.shadow, background:T.glassBg, backdropFilter:"blur(6px)", padding:14, overflow:"auto" }}
-      onContextMenu={openBgCtx}
-      onClick={()=>{ setCtx({ open:false, x:0, y:0, id:"" }); setBgCtx({ open:false, x:0, y:0 }); }}
-    >
-      <div style={{ display:"flex", gap:8, marginBottom:12 }}>
-        <input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Suche…" style={{ flex:1, padding:"8px 10px", border:"1px solid #cfeede", borderRadius:10 }} />
-        <select value={sort} onChange={(e)=>setSort(e.target.value)} style={{ padding:"8px 10px", border:"1px solid #cfeede", borderRadius:10 }}>
-          <option value="name_asc">Name (A–Z)</option>
-          <option value="name_desc">Name (Z–A)</option>
-          <option value="age_asc">Alter (aufsteigend)</option>
-          <option value="age_desc">Alter (absteigend)</option>
-          <option value="status">Status (Lebendig zuerst)</option>
-          <option value="occult">Okkult → Name</option>
-        </select>
-        <select value={status} onChange={(e)=>setStatus(e.target.value)} style={{ padding:"8px 10px", border:"1px solid #cfeede", borderRadius:10 }}>
-          <option value="all">Alle</option>
-          <option value="alive">Nur lebendig</option>
-          <option value="dead">Nur verstorben</option>
-        </select>
-      </div>
+    <div className="bg-sims" style={rootStyle}>
+      {/* Toolbar */}
+      <div className="toolbar" style={{ gap: 10 }}>
+        <input className="input" value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Suche nach Name…" />
 
-      <div style={{ marginBottom:10 }}>
-        <div style={{ fontSize:12, color:T.subtext, marginBottom:6 }}>Okkult-Filter</div>
-        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-          {FIELD_TEMPLATES.occult.options.map(o=>(
-            <label key={o} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"6px 8px", border:`1px solid ${T.line}`, borderRadius:10, background:"rgba(255,255,255,0.7)" }}>
-              <input type="checkbox" checked={occult.has(o)} onChange={(e)=>{
-                setOccult(prev=>{ const ns=new Set(prev); e.target.checked?ns.add(o):ns.delete(o); return ns; });
-              }} />
-              {o}
-            </label>
+        <select className="select" value={status} onChange={(e)=>setStatus(e.target.value)}>
+          <option value="all">Status: alle</option>
+          <option value="alive">nur lebend</option>
+          <option value="dead">nur tot</option>
+        </select>
+
+        <select className="select" value={fOccult} onChange={(e)=>setFOccult(e.target.value)}>
+          <option value="">Okkult: alle</option>
+          {OCCULT_TYPES.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+
+        <select className="select" value={fAge} onChange={(e)=>setFAge(e.target.value)}>
+          <option value="">Alter: alle</option>
+          {AGE_GROUPS.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+
+        <select className="select" value={fCareer} onChange={(e)=>setFCareer(e.target.value)}>
+          <option value="">Beruf: alle</option>
+          {/* Mit Gruppen */}
+          {Object.entries(CAREERS_BY_GROUP).map(([group, list]) => (
+            <optgroup key={group} label={group}>
+              {list.map(c => <option key={group + c} value={c}>{c}</option>)}
+            </optgroup>
           ))}
+        </select>
+
+        <select className="select" value={sort} onChange={(e)=>setSort(e.target.value)}>
+          <option value="name_asc">Name A–Z</option>
+          <option value="name_desc">Name Z–A</option>
+        </select>
+
+        <div style={{ marginLeft:"auto", display:"flex", gap:8, alignItems:"center" }}>
+          <span style={{ fontSize:12, opacity:.75 }}>Hintergrund:</span>
+          <button className="btn" onClick={()=>pickImage((dataUrl)=>onBgUpload?.(dataUrl))}>Bild setzen</button>
+          <label style={{ fontSize:12, opacity:.75 }}>Deckkraft {Math.round((bgOpacity)*100)}%</label>
+          <input type="range" min={0} max={1} step={0.05} value={bgOpacity} onChange={(e)=>onBgOpacity?.(parseFloat(e.target.value))}/>
+          <button className="btn" onClick={onBgClear}>Entfernen</button>
         </div>
       </div>
 
-      <div style={{ marginBottom:12 }}>
-        <div style={{ fontSize:12, color:T.subtext, marginBottom:6 }}>Tags enthalten (Hobbys/Merkmale)</div>
-        <input value={tagFilter} onChange={(e)=>setTagFilter(e.target.value)} placeholder="z. B. Musik, Ordentlich…" style={{ width:"100%", padding:"8px 10px", border:"1px solid #cfeede", borderRadius:10 }} />
-      </div>
+      {/* Karten (ohne Vernetzungsgrad) */}
+      <div className="gallery-grid--big">
+        {people.map(p => (
+          <div
+            key={p.id}
+            className="sim-card"
+            onContextMenu={(e)=>{ e.preventDefault(); setMenu({ open:true, x:e.clientX, y:e.clientY, sim:p }); }}
+            title={p.label ?? p.id}
+          >
+            <div className="sim-quick">
+              <button className="icon-btn" title="Bearbeiten" onClick={() => startEdit(p)}>📝</button>
+              <button className="icon-btn" title="Explorer Fokus" onClick={() => focusInExplorer(p.id)}>🗺️</button>
+              <button className="icon-btn" title="Löschen" onClick={() => deleteSim(p.id)}>🗑️</button>
+            </div>
 
-      {list.length === 0 ? (
-        <div style={{ fontSize:14, color:T.subtext }}>Keine Treffer. Prüfe Suche/Filter.</div>
-      ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))", gap:14 }}>
-          {list.map(n=>{
-            const alive = n.alive !== false;
-            const occ = getOccult(n);
-            const age = getAge(n);
-            const job = getField(n,"job")?.value || "";
-            const tags = getAllTags(n);
-            return (
-              <div
-                key={n.id}
-                onContextMenu={(e)=>openCardCtx(e, n.id)}
-                style={{ border:`1px solid ${T.line}`, borderRadius:16, padding:10, background:"rgba(255,255,255,0.75)", boxShadow:T.shadow, opacity:alive?1:.7, filter:alive?"none":"grayscale(20%)" }}
-              >
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                  <div style={{ fontWeight:800, fontSize:16 }}>{alive ? "" : "☠️ "}{n.label || n.id}</div>
-                  <span style={{ marginLeft:"auto", fontSize:12, color:T.subtext }}>{occ}</span>
-                </div>
-                <div style={{ width:"100%", aspectRatio:"1/1", borderRadius:14, overflow:"hidden", border:`1px solid ${T.line}`, background:"#f3f4f6", display:"grid", placeItems:"center" }}>
-                  {n.img ? <img src={n.img} alt={n.label} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                         : <div style={{ fontSize:38, color:"#64748b", fontWeight:700 }}>{(n.label||n.id).slice(0,2).toUpperCase()}</div>}
-                </div>
-                <div style={{ marginTop:8, fontSize:13, color:T.subtext }}>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                    {typeof age==="number" && <Chip>Alter: {age}</Chip>}
-                    {job && <Chip>Job: {job}</Chip>}
-                    {occ && <Chip>Okkult: {occ}</Chip>}
+            <div className="sim-banner">
+              {p.img ? <img src={p.img} alt={p.label ?? p.id} loading="lazy" /> : null}
+              <div className="sim-overlay"></div>
+              <div className="sim-meta">
+                <div>
+                  <div className="sim-name">{p.label ?? p.id}</div>
+                  <div className="sim-badges">
+                    {p.age ? <span className="badge">{p.age}</span> : null}
+                    <span className="badge">{p.occult || "Mensch"}</span>
+                    {p.career ? <span className="badge">{p.career}</span> : null}
+                    {Number(p.fame) > 0 ? <span className="badge">★ {Number(p.fame)}</span> : null}
+                    {p.household ? <span className="badge">Haushalt: {p.household}</span> : null}
+                    {p.world ? <span className="badge">{p.world}</span> : null}
                   </div>
-                  {!!tags.length && (
-                    <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:6 }}>
-                      {tags.slice(0,12).map((t,i)=> <Tag key={i}>{t}</Tag>)}
-                      {tags.length>12 && <span style={{ fontSize:12, opacity:.7 }}>+{tags.length-12} weitere</span>}
-                    </div>
-                  )}
-                </div>
-                <div style={{ display:"flex", gap:8, marginTop:10 }}>
-                  <button onClick={()=>onOpenInfo(n.id)} style={{ padding:"8px 10px", border:"1px solid #cfeede", borderRadius:10, background:"#E6FFF3" }}>Infos…</button>
-                  <button onClick={()=>onFocusInExplorer(n.id)} style={{ padding:"8px 10px", border:"1px solid #cfeede", borderRadius:10, background:"#E6FFF3" }}>Im Explorer</button>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
 
-      {/* Karten-Kontextmenü */}
-      {ctx.open && (
-        <div
-          style={{ position:"absolute", left:ctx.x, top:ctx.y, transform:"translateY(8px)", minWidth:180, zIndex:60, borderRadius:12, background:T.glassBg, border:`1px solid ${T.line}`, boxShadow:T.shadow, overflow:"hidden" }}
-          onClick={(e)=>e.stopPropagation()}
-        >
-          <div style={{ padding:"8px 10px", cursor:"pointer" }} onClick={()=>onOpenInfo(ctx.id)}>ℹ️ Infos…</div>
-          <div style={{ padding:"8px 10px", cursor:"pointer" }} onClick={()=>onFocusInExplorer(ctx.id)}>🗺️ Im Explorer fokussieren</div>
-          <div style={{ height:1, background:T.line }} />
-          <div style={{ padding:"8px 10px", cursor:"pointer" }} onClick={()=>setCtx({ open:false, x:0, y:0, id:"" })}>Abbrechen</div>
-        </div>
-      )}
-
-      {/* Hintergrund-Kontextmenü */}
-      {bgCtx.open && (
-        <div
-          style={{ position:"absolute", left:bgCtx.x, top:bgCtx.y, transform:"translateY(8px)", minWidth:220, zIndex:59, borderRadius:12, background:T.glassBg, border:`1px solid ${T.line}`, boxShadow:T.shadow, overflow:"hidden" }}
-          onClick={(e)=>e.stopPropagation()}
-        >
-          <div style={{ padding:"8px 10px", fontWeight:700, color:T.subtext }}>Hintergrund</div>
-          <div style={{ height:1, background:T.line }} />
-          <label style={{ padding:"8px 10px", cursor:"pointer", display:"block" }}>
-            🖼️ Bild auswählen…
-            <input type="file" accept="image/*" style={{ display:"none" }} onChange={(e)=>{ const f=e.target.files?.[0]; if (f) { const r=new FileReader(); r.onload=()=>onBgUpload(String(r.result)); r.readAsDataURL(f);} }} />
-          </label>
-          <div style={{ padding:"8px 10px" }}>
-            <div style={{ fontSize:12, color:T.subtext, marginBottom:6 }}>Transparenz: {bgOpacity.toFixed(2)}</div>
-            <input type="range" min={0.1} max={0.9} step={0.05} value={bgOpacity} onChange={(e)=>onBgOpacity(parseFloat(e.target.value))} style={{ width:"100%" }} />
+            <div className="sim-body">
+              {Array.isArray(p.traits) && p.traits.length > 0 && (
+                <div className="sim-traits">
+                  {p.traits.slice(0,6).map((t,i)=><span className="trait" key={i}>{t}</span>)}
+                </div>
+              )}
+              {p.notes ? <div style={{ fontSize:13, opacity:.85, lineHeight:1.35 }}>{p.notes}</div> : null}
+            </div>
           </div>
-          <div style={{ padding:"8px 10px", cursor:"pointer", color:"#b3261e" }} onClick={onBgClear}>🗑️ Zurücksetzen</div>
-          <div style={{ height:1, background:T.line }} />
-          <div style={{ padding:"8px 10px", cursor:"pointer" }} onClick={()=>setBgCtx({ open:false, x:0, y:0 })}>Abbrechen</div>
+        ))}
+      </div>
+
+      {/* eigenes kleines Kontextmenü */}
+      {menu.open && (
+        <div
+          className="menu"
+          style={{ left: menu.x, top: menu.y }}
+          onMouseLeave={closeMenu}
+        >
+          <div className="menu-item" onClick={()=>{ onOpenInfo?.(menu.sim.id) ?? startEdit(menu.sim); closeMenu(); }}>📝 Info bearbeiten</div>
+          <div className="menu-item" onClick={()=>{ pickImage((dataUrl)=>{ setForm(f => ({ ...f, img:dataUrl })); startEdit(menu.sim); }); closeMenu(); }}>🖼️ Bild ändern</div>
+          <div className="menu-item" onClick={()=>{ onFocusInExplorer?.(menu.sim.id) ?? focusInExplorer(menu.sim.id); closeMenu(); }}>🗺️ Im Explorer fokussieren</div>
+          <div className="menu-item" onClick={()=>{ deleteSim(menu.sim.id); closeMenu(); }}>🗑️ Sim löschen</div>
         </div>
       )}
+
+      {/* Bearbeiten */}
+      <InfoModal open={!!editSimId} title="Sim bearbeiten" onClose={()=>setEditSimId(null)}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+          <Field label="Name">
+            <input className="input" value={form.label} onChange={(e)=>setForm(f=>({...f, label:e.target.value}))}/>
+          </Field>
+          <Field label="Status">
+            <select className="select" value={form.alive ? "alive" : "dead"} onChange={(e)=>setForm(f=>({...f, alive:e.target.value==="alive"}))}>
+              <option value="alive">lebend</option>
+              <option value="dead">verstorben</option>
+            </select>
+          </Field>
+
+          <Field label="Alter">
+            <select className="select" value={form.age} onChange={(e)=>setForm(f=>({...f, age:e.target.value}))}>
+              <option value="">–</option>
+              {AGE_GROUPS.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </Field>
+          <Field label="Okkult">
+            <select className="select" value={form.occult} onChange={(e)=>setForm(f=>({...f, occult:e.target.value}))}>
+              {OCCULT_TYPES.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </Field>
+
+          <Field label="Beruf">
+            <select className="select" value={form.career} onChange={(e)=>setForm(f=>({...f, career:e.target.value}))}>
+              <option value="">–</option>
+              {Object.entries(CAREERS_BY_GROUP).map(([group, list]) => (
+                <optgroup key={group} label={group}>
+                  {list.map(c => <option key={group + c} value={c}>{c}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </Field>
+          <Field label="Karrierestufe">
+            <input className="input" value={form.careerLevel} onChange={(e)=>setForm(f=>({...f, careerLevel:e.target.value}))} placeholder="z.B. Level 5 / Titel" />
+          </Field>
+
+          <Field label="Haushalt">
+            <input className="input" value={form.household} onChange={(e)=>setForm(f=>({...f, household:e.target.value}))}/>
+          </Field>
+          <Field label="Welt">
+            <input className="input" value={form.world} onChange={(e)=>setForm(f=>({...f, world:e.target.value}))} placeholder="z.B. Oasis Springs" />
+          </Field>
+
+          <Field label="Fame (0–5)">
+            <input className="input" type="number" min={0} max={5} step={1} value={form.fame} onChange={(e)=>setForm(f=>({...f, fame: Number(e.target.value)||0 }))}/>
+          </Field>
+          <Field label="Uni-Abschluss">
+            <select className="select" value={form.degree} onChange={(e)=>setForm(f=>({...f, degree:e.target.value}))}>
+              <option value="">–</option>
+              {UNIVERSITY_DEGREES.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </Field>
+
+          <Field label="Aspiration">
+            <input className="input" value={form.aspiration} onChange={(e)=>setForm(f=>({...f, aspiration:e.target.value}))}/>
+          </Field>
+
+          <Field label="Traits (kommagetrennt)" full>
+            <input
+              className="input"
+              value={(form.traits || []).join(", ")}
+              onChange={(e)=>setForm(f=>({...f, traits: e.target.value.split(",").map(s=>s.trim()).filter(Boolean)}))}
+              placeholder="z.B. Kreativ, Eifersüchtig, Perfektionist"
+            />
+          </Field>
+
+          <Field label="Likes (kommagetrennt)" full>
+            <input
+              className="input"
+              value={(form.likes || []).join(", ")}
+              onChange={(e)=>setForm(f=>({...f, likes: e.target.value.split(",").map(s=>s.trim()).filter(Boolean)}))}
+              placeholder="z.B. Farbe Blau, Hip-Hop, Kochen"
+            />
+          </Field>
+
+          <Field label="Dislikes (kommagetrennt)" full>
+            <input
+              className="input"
+              value={(form.dislikes || []).join(", ")}
+              onChange={(e)=>setForm(f=>({...f, dislikes: e.target.value.split(",").map(s=>s.trim()).filter(Boolean)}))}
+            />
+          </Field>
+
+          <Field label="Notizen" full>
+            <textarea className="input" style={{ minHeight: 90 }} value={form.notes} onChange={(e)=>setForm(f=>({...f, notes:e.target.value}))}/>
+          </Field>
+
+          <Field label="Bild" full>
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+              <button className="btn" onClick={()=>pickImage((dataUrl)=>setForm(f=>({...f, img:dataUrl})))}>Bild wählen</button>
+              {form.img ? <button className="btn" onClick={()=>setForm(f=>({...f, img:null}))}>Entfernen</button> : null}
+            </div>
+            {form.img ? <img src={form.img} alt="Preview" style={{ marginTop:8, width:"100%", borderRadius:12, border:"1px solid #e5e7eb" }}/> : null}
+          </Field>
+        </div>
+
+        <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:12 }}>
+          <button className="btn" onClick={()=>setEditSimId(null)}>Abbrechen</button>
+          <button className="btn btn-accent" onClick={saveEdit}>Speichern</button>
+        </div>
+      </InfoModal>
     </div>
   );
 }
 
-function Chip({ children }) {
-  return <span style={{ padding:"2px 8px", borderRadius:999, border:"1px solid #cfeede", background:"#fff", fontSize:12 }}>{children}</span>;
-}
-function Tag({ children }) {
-  return <span style={{ padding:"2px 8px", borderRadius:999, border:"1px solid #cfeede", background:"#ffffffc7", fontSize:12 }}>{children}</span>;
+function Field({ label, children, full }) {
+  return (
+    <div style={{ gridColumn: full ? "1 / -1" : "auto" }}>
+      <label style={{ display:"block", fontSize:12, opacity:.75, marginBottom:4 }}>{label}</label>
+      {children}
+    </div>
+  );
 }
