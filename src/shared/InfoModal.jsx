@@ -1,4 +1,3 @@
-// src/shared/InfoModal.jsx
 import React, { useEffect } from "react";
 
 export default function InfoModal({ open, title = "Info", children, onClose }) {

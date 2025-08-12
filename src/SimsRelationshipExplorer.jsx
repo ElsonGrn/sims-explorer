@@ -1,3 +1,4 @@
+// src/SimsRelationshipExplorer.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { THEME, EDGE_STYLE, FIELD_TEMPLATES } from "./shared/constants";
 import { deepClone, makeIdFromLabel } from "./shared/utils";
@@ -83,6 +84,16 @@ export default function SimsRelationshipExplorer() {
   useEffect(() => { try { localStorage.setItem(LS_UI, JSON.stringify({ view, focusId, depth, onlyNeighborhood })); } catch {} }, [view, focusId, depth, onlyNeighborhood]);
   useEffect(() => { try { bgImage ? localStorage.setItem(LS_BG_IMG, bgImage) : localStorage.removeItem(LS_BG_IMG);} catch {} }, [bgImage]);
   useEffect(() => { try { localStorage.setItem(LS_BG_OPA, String(bgOpacity)); } catch {} }, [bgOpacity]);
+
+  // 🔁 NEU: Event-Fallback – nimmt Updates aus der Galerie (CustomEvent) sicher an
+  useEffect(() => {
+    const onUpdate = (e) => {
+      const { nodes, edges } = e.detail || {};
+      if (Array.isArray(nodes) && Array.isArray(edges)) setData({ nodes, edges });
+    };
+    window.addEventListener("sims:updateData", onUpdate);
+    return () => window.removeEventListener("sims:updateData", onUpdate);
+  }, []);
 
   const idToLabel = useMemo(() => {
     const m = new Map(); data.nodes.forEach((n)=>m.set(n.id, n.label||n.id)); return m;
@@ -367,7 +378,9 @@ export default function SimsRelationshipExplorer() {
             onBgUpload={onBgUpload}
             onBgOpacity={onBgOpacity}
             onBgClear={onBgClear}
+            onChange={(next)=>setData(next)}
           />
+
         )}
       </div>
 
