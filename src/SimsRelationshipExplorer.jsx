@@ -1,42 +1,43 @@
 // src/SimsRelationshipExplorer.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { THEME, EDGE_STYLE, FIELD_TEMPLATES } from "./shared/constants";
-import { deepClone, makeIdFromLabel } from "./shared/utils";
+import { deepClone } from "./shared/utils";
 import ExplorerView from "./views/ExplorerView";
 import GalleryView from "./views/GalleryView";
 import InfoModal from "./shared/InfoModal";
 
-const LS_KEY = "simsExplorerDataV1";
-const LS_UI  = "simsExplorerUiV1";
+const LS_KEY    = "simsExplorerDataV1";
+const LS_UI     = "simsExplorerUiV1";
 const LS_BG_IMG = "simsExplorerBgImageV1";
 const LS_BG_OPA = "simsExplorerBgOpacityV1";
+const LS_NEXTID = "simsExplorerNextNumericIdV1";
 
 const START_SAMPLE = {
   nodes: [
-    { id: "a", label: "Antonia", img: "", alive: true, info: { fields: [] } },
-    { id: "b", label: "Livia",   img: "", alive: true, info: { fields: [] } },
-    { id: "c", label: "Mimi",    img: "", alive: true, info: { fields: [] } },
-    { id: "d", label: "Elias",   img: "", alive: true, info: { fields: [] } },
-    { id: "e", label: "Nico",    img: "", alive: true, info: { fields: [] } },
-    { id: "f", label: "Hannah",  img: "", alive: true, info: { fields: [] } },
-    { id: "g", label: "Sofie",   img: "", alive: true, info: { fields: [] } },
+    { id: "1", label: "Antonia", img: "", alive: true, info: { fields: [] } },
+    { id: "2", label: "Livia",   img: "", alive: true, info: { fields: [] } },
+    { id: "3", label: "Mimi",    img: "", alive: true, info: { fields: [] } },
+    { id: "4", label: "Elias",   img: "", alive: true, info: { fields: [] } },
+    { id: "5", label: "Nico",    img: "", alive: true, info: { fields: [] } },
+    { id: "6", label: "Hannah",  img: "", alive: true, info: { fields: [] } },
+    { id: "7", label: "Sofie",   img: "", alive: true, info: { fields: [] } },
   ],
   edges: [
-    { id: "e1", source: "d", target: "a", type: "romantic", strength: 0.9 },
-    { id: "e2", source: "d", target: "b", type: "romantic", strength: 0.6 },
-    { id: "e3", source: "d", target: "c", type: "ex",       strength: 0.3 },
-    { id: "e4", source: "a", target: "b", type: "rivalry",  strength: 0.7 },
-    { id: "e5", source: "b", target: "c", type: "friend",   strength: 0.8 },
-    { id: "e6", source: "d", target: "f", type: "married",  strength: 1 },
-    { id: "e7", source: "f", target: "g", type: "parent",   strength: 1 },
-    { id: "e8", source: "d", target: "g", type: "parent",   strength: 1 },
+    { id: "e1", source: "4", target: "1", type: "romantic", strength: 0.9 },
+    { id: "e2", source: "4", target: "2", type: "romantic", strength: 0.6 },
+    { id: "e3", source: "4", target: "3", type: "ex",       strength: 0.3 },
+    { id: "e4", source: "1", target: "2", type: "rivalry",  strength: 0.7 },
+    { id: "e5", source: "2", target: "3", type: "friend",   strength: 0.8 },
+    { id: "e6", source: "4", target: "6", type: "married",  strength: 1 },
+    { id: "e7", source: "6", target: "7", type: "parent",   strength: 1 },
+    { id: "e8", source: "4", target: "7", type: "parent",   strength: 1 },
   ],
 };
 
 export default function SimsRelationshipExplorer() {
   const T = THEME;
 
-  // Daten + UI
+  /* -------------------- Daten laden -------------------- */
   const [data, setData] = useState(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -59,7 +60,22 @@ export default function SimsRelationshipExplorer() {
     return "explorer";
   });
 
-  // Explorer-UI-States
+  // Numerische Auto-ID
+  const [nextId, setNextId] = useState(() => {
+    try {
+      const saved = parseInt(localStorage.getItem(LS_NEXTID), 10);
+      if (Number.isFinite(saved) && saved > 0) return saved;
+    } catch {}
+    const maxNum = Math.max(
+      0,
+      ...((data.nodes || START_SAMPLE.nodes) ?? [])
+        .map(n => parseInt(n.id, 10))
+        .filter(Number.isFinite)
+    );
+    return maxNum + 1;
+  });
+
+  /* -------------------- Explorer-UI -------------------- */
   const [focusId, setFocusId] = useState("");
   const [depth, setDepth] = useState(1);
   const [onlyNeighborhood, setOnlyNeighborhood] = useState(true);
@@ -67,30 +83,31 @@ export default function SimsRelationshipExplorer() {
   const [labelMode, setLabelMode] = useState("always");
   const [edgeLabelMode, setEdgeLabelMode] = useState("emoji");
 
-  // Beziehungen bearbeiten (Sidebar)
+  /* -------------------- Beziehungen -------------------- */
   const [relSource, setRelSource] = useState("");
   const [relTarget, setRelTarget] = useState("");
   const [relType, setRelType] = useState("friend");
   const [relStrength, setRelStrength] = useState(0.8);
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
 
-  // Hintergrund (nur Galerie verwendet)
+  /* -------------------- Galerie-Hintergrund -------------------- */
   const [bgImage, setBgImage] = useState(() => localStorage.getItem(LS_BG_IMG) || "");
   const [bgOpacity, setBgOpacity] = useState(() => {
     const v = parseFloat(localStorage.getItem(LS_BG_OPA));
     return Number.isFinite(v) ? v : 0.3;
   });
 
-  // InfoModal
+  /* -------------------- InfoModal -------------------- */
   const [infoModal, setInfoModal] = useState({ open:false, id:"" });
 
-  // Persistenz
+  /* -------------------- Persistenz -------------------- */
   useEffect(() => { try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {} }, [data]);
   useEffect(() => { try { localStorage.setItem(LS_UI, JSON.stringify({ view, focusId, depth, onlyNeighborhood })); } catch {} }, [view, focusId, depth, onlyNeighborhood]);
   useEffect(() => { try { bgImage ? localStorage.setItem(LS_BG_IMG, bgImage) : localStorage.removeItem(LS_BG_IMG);} catch {} }, [bgImage]);
   useEffect(() => { try { localStorage.setItem(LS_BG_OPA, String(bgOpacity)); } catch {} }, [bgOpacity]);
+  useEffect(() => { try { localStorage.setItem(LS_NEXTID, String(nextId)); } catch {} }, [nextId]);
 
-  // Event-Fallback – nimmt Updates aus der Galerie (CustomEvent) sicher an
+  /* -------------------- Cross-View Events -------------------- */
   useEffect(() => {
     const onUpdate = (e) => {
       const { nodes, edges } = e.detail || {};
@@ -100,11 +117,12 @@ export default function SimsRelationshipExplorer() {
     return () => window.removeEventListener("sims:updateData", onUpdate);
   }, []);
 
-  const idToLabel = useMemo(() => {
-    const m = new Map(); data.nodes.forEach((n)=>m.set(n.id, n.label||n.id)); return m;
-  }, [data]);
+  const nodeOptions = useMemo(
+    () => data.nodes.slice().sort((a,b)=>(a.label||a.id).localeCompare(b.label||b.id)),
+    [data]
+  );
 
-  // --- JSON Import/Export ---
+  /* -------------------- JSON Import / Export -------------------- */
   function handleImportJson(file) {
     const r = new FileReader();
     r.onload = () => {
@@ -112,13 +130,16 @@ export default function SimsRelationshipExplorer() {
         const o = JSON.parse(String(r.result));
         if (!o.nodes || !o.edges) throw new Error("Erwarte keys 'nodes' & 'edges'");
         o.nodes = o.nodes.map((n) => ({
-          alive:n.alive!==false,
-          info:n.info&&Array.isArray(n.info.fields)?n.info:{fields:[]},
-          img:"", // Bilder optional
-          ...n
+          alive: n.alive !== false,
+          info: n.info && Array.isArray(n.info.fields) ? n.info : { fields: [] },
+          img: "",
+          ...n,
         }));
         setData(o);
         setFocusId("");
+        // nextId neu bestimmen
+        const maxNum = Math.max(0, ...o.nodes.map(n => parseInt(n.id,10)).filter(Number.isFinite));
+        setNextId(maxNum + 1);
       } catch (e) {
         alert("Import fehlgeschlagen: " + e.message);
       }
@@ -133,24 +154,33 @@ export default function SimsRelationshipExplorer() {
     URL.revokeObjectURL(url);
   }
 
-  // Personen
+  /* -------------------- Personen -------------------- */
   const [newPersonLabel, setNewPersonLabel] = useState("");
   const [newPersonImgFile, setNewPersonImgFile] = useState(null);
+
+  function nextFreeNumericId() {
+    const used = new Set((data.nodes||[]).map(n => String(n.id)));
+    let candidate = nextId;
+    while (used.has(String(candidate))) candidate++;
+    return candidate;
+  }
   function addPerson() {
     if (!newPersonLabel.trim()) return alert("Bitte Namen eingeben");
-    const id = makeIdFromLabel(newPersonLabel);
-    if (data.nodes.some(n=>n.id===id)) return alert("ID existiert bereits");
+    const candidate = nextFreeNumericId();
+    const id = String(candidate);
     const commit = (img) => {
-      setData(prev => ({ ...prev, nodes:[...prev.nodes, { id, label:newPersonLabel.trim(), img: img || "", alive:true, info:{ fields:[] } }] }));
-      setNewPersonLabel("");
-      setNewPersonImgFile(null);
+      setData(prev => ({
+        ...prev,
+        nodes:[...prev.nodes, { id, label:newPersonLabel.trim(), img: img || "", alive:true, info:{ fields:[] } }]
+      }));
+      setNewPersonLabel(""); setNewPersonImgFile(null); setNextId(candidate + 1);
     };
     if (newPersonImgFile) {
       const r = new FileReader(); r.onload = () => commit(String(r.result)); r.readAsDataURL(newPersonImgFile);
     } else commit("");
   }
 
-  // Beziehungen (Sidebar)
+  /* -------------------- Beziehungen -------------------- */
   function upsertRelationship() {
     if (!relSource || !relTarget || relSource===relTarget) return alert("Quelle/Ziel prüfen");
     setData(prev=>{
@@ -171,104 +201,70 @@ export default function SimsRelationshipExplorer() {
     setSelectedEdgeId("");
   }
 
-  // BG helpers (nur Galerie nutzt diese Props)
+  /* -------------------- Galerie: BG-Helper -------------------- */
   const onBgUpload = (src) => setBgImage(src);
   const onBgOpacity = (v) => setBgOpacity(v);
   const onBgClear = () => setBgImage("");
 
-  // Info modal
-  const openInfo = (id) => setInfoModal({ open:true, id });
+  /* -------------------- InfoModal Helper -------------------- */
+  const openInfo  = (id) => setInfoModal({ open:true, id });
   const closeInfo = () => setInfoModal({ open:false, id:"" });
-  const saveInfo = (patch) => {
+  const saveInfo  = (patch) => {
     setData(prev => ({ ...prev, nodes: prev.nodes.map(n => n.id === infoModal.id ? { ...n, ...patch } : n) }));
     closeInfo();
   };
 
-  // ====== Create-Modal (für Explorer + Galerie) ======
-  // Optionen (lokal – gern zentralisieren, falls gewünscht)
-  const AGE_GROUPS = ["Baby","Kleinkind","Kind","Teen","Junger Erwachsener","Erwachsener","Senior"];
-  const OCCULT_TYPES = ["Mensch","Vampir","Zauberer/Hexe","Alien","Meerjungfrau","Werwolf","Pflanzensim","Servo","Geist"];
-  const CAREERS = ["Arbeitslos","Schauspieler/in","Astronaut/in","Athlet/in","Business","Ingenieur/in","Entertainer/in","Kritiker/in","Koch/Köchin","Detektiv/in","Ärztin/Arzt","Gärtner/in","Jurist/in","Militär","Maler/in","Politiker/in","Wissenschaftler/in","Geheimagent/in","Social Media","Mode-Influencer/in","Tech-Guru","Autor/in","Öko-Designer/in","Naturschützer/in","Freelancer: Programmierer/in","Freelancer: Autor/in","Freelancer: Künstler/in","Freelancer: Fotograf/in"];
-  const TRAITS = ["Aktiv","Kreativ","Genie","Gesellig","Selbstsicher","Ordentlich","Verschmutzt","Faul","Kindisch","Spielverderber","Romantisch","Hitzkopf","Eifersüchtig","Ehrgeizig","Tollpatschig","Clumsy","Musikliebhaber/in","Bücherwurm","Geek","Hundefreund/in","Katzenfreund/in","Vegetarier/in","Bro","Schüchtern","Einsiedler/in","Snob","Materialistisch"];
-  const ASPIRATIONS = ["Familie","Liebe","Wissen","Natur","Reichtum","Kreativität","Ortgebunden","Athletik","Popularität","Kriminalität"];
-  const FAME_STARS = [0,1,2,3,4,5];
-  const REPUTATIONS = ["Sehr schlecht","Schlecht","Neutral","Gut","Sehr gut"];
-
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    name: "", alive: true, file: null,
-    age: "", occult: "", career: "", careerLevel: 0,
-    aspiration: "", fame: 0, reputation: "Neutral",
-    traits: [],
-  });
-
-  function handleRequestCreateSim() {
-    setCreateForm({
-      name: "", alive: true, file: null,
-      age: "", occult: "", career: "", careerLevel: 0,
-      aspiration: "", fame: 0, reputation: "Neutral",
-      traits: [],
-    });
-    setCreateOpen(true);
-  }
-  function handleCreateCancel() { setCreateOpen(false); }
-  function handleCreateSubmit() {
-    const name = (createForm.name || "").trim();
-    const base = makeIdFromLabel(name || "Sim");
-    let id = base, i = 2;
-    while (data.nodes.some(n => n.id === id)) id = `${base}-${i++}`;
-
-    const commit = (imgData) => {
-      setData(prev => {
-        const next = deepClone(prev);
-        next.nodes.push({
-          id,
-          label: name || id,
-          img: imgData || "",
-          alive: !!createForm.alive,
-          info: {
-            age: createForm.age || "",
-            occult: createForm.occult || "",
-            career: createForm.career || "",
-            careerLevel: Number(createForm.careerLevel) || 0,
-            traits: Array.isArray(createForm.traits) ? createForm.traits : [],
-            aspiration: createForm.aspiration || "",
-            fame: Number(createForm.fame) || 0,
-            reputation: createForm.reputation || "Neutral",
-            fields: [], // kompatibel
-          },
-        });
-        return next;
-      });
-      setCreateOpen(false);
-    };
-
-    if (createForm.file) {
-      const r = new FileReader();
-      r.onload = () => commit(String(r.result));
-      r.readAsDataURL(createForm.file);
-    } else {
-      commit("");
-    }
-  }
-
-  // Sidebar Styles
-  const glass = { background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(6px)" };
-  const panel = { padding: 14, borderRadius: 16, marginBottom: 12, ...glass };
+  /* -------------------- Styles -------------------- */
+  const glass  = { background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(6px)" };
+  const panel  = { padding: 14, borderRadius: 16, marginBottom: 12, overflow: "hidden", ...glass };
   const header = { display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 18, ...glass };
   const labelS = { display: "block", fontSize: 12, color: T.subtext, marginBottom: 6 };
-  const inputS = { width: "100%", padding: "10px 12px", border: `1px solid ${T.line}`, borderRadius: 12, background: "rgba(255,255,255,0.65)", color: T.text, outline: "none" };
+  const inputS = {
+    width: "100%", padding: "10px 12px", border: `1px solid ${T.line}`, borderRadius: 12,
+    background: "rgba(255,255,255,0.65)", color: T.text, outline: "none", boxSizing: "border-box"
+  };
   const btnBase = { padding: "9px 12px", borderRadius: 12, border: `1px solid ${T.line}`, cursor: "pointer", transition: "all .2s ease", color: T.text, background: T.accentSoft };
-  const btn = (filled = false) => ({ ...btnBase, background: filled ? T.accent : T.accentSoft, color: filled ? "#fff" : T.text });
+  const btn     = (filled = false) => ({ ...btnBase, background: filled ? T.accent : T.accentSoft, color: filled ? "#fff" : T.text });
 
-  const nodeOptions = useMemo(() => data.nodes.slice().sort((a,b)=>(a.label||a.id).localeCompare(b.label||b.id)), [data]);
+  /* -------------------- Combobox: Person fokussieren -------------------- */
+  const [focusQuery, setFocusQuery] = useState("");
+  const [focusOpen, setFocusOpen]   = useState(false);
+  const focusRef = useRef(null);
 
+  useEffect(() => {
+    const n = data.nodes.find(n => n.id === focusId);
+    setFocusQuery(n ? (n.label || n.id) : "");
+  }, [data, focusId]);
+
+  const nodeOptionsSorted = useMemo(
+    () => data.nodes.map(n=>({id:n.id,label:n.label||n.id})).sort((a,b)=>a.label.localeCompare(b.label)),
+    [data]
+  );
+  const filteredFocus = useMemo(() => {
+    const q = focusQuery.trim().toLowerCase();
+    if (!q) return nodeOptionsSorted;
+    return nodeOptionsSorted.filter(p =>
+      p.label.toLowerCase().includes(q) || String(p.id).toLowerCase().includes(q)
+    );
+  }, [nodeOptionsSorted, focusQuery]);
+
+  useEffect(() => {
+    if (!focusOpen) return;
+    const onDown = (e) => { if (focusRef.current && !focusRef.current.contains(e.target)) setFocusOpen(false); };
+    const onEsc  = (e) => { if (e.key === "Escape") setFocusOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onEsc);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onEsc); };
+  }, [focusOpen]);
+
+  const commitFocus = (id) => { setFocusId(id); setFocusOpen(false); };
+
+  /* -------------------- Render -------------------- */
   return (
     <div
       style={{
         display:"grid", gridTemplateColumns:"380px 1fr", gap:18, padding:18, minHeight:"100vh",
-        background: T.bg, // ⟵ kein globales BG-Bild mehr
-        color:T.text, fontFamily:"Inter, system-ui, Arial, sans-serif", position:"relative"
+        background: T.bg, color:T.text, fontFamily:"Inter, system-ui, Arial, sans-serif", position:"relative"
       }}
     >
       {/* Sidebar */}
@@ -283,20 +279,105 @@ export default function SimsRelationshipExplorer() {
 
         {view === "explorer" ? (
           <>
+            {/* Filter & Fokus */}
             <div style={panel}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Filter & Fokus</div>
-              <label style={labelS}>Person fokussieren</label>
-              <input list="people" style={inputS} value={idToLabel.get(focusId)||""}
-                onChange={(e)=>{ const val=e.target.value; const m=nodeOptions.find(n=>n.label===val || n.id===val); setFocusId(m?m.id:""); }}
-                placeholder="Namen eingeben…" />
-              <datalist id="people">{nodeOptions.map(n => <option key={n.id} value={n.label||n.id} />)}</datalist>
-              <div style={{ display:"flex", gap:12, marginTop:8, alignItems:"center" }}>
-                <label><input type="checkbox" checked={onlyNeighborhood} onChange={(e)=>setOnlyNeighborhood(e.target.checked)} /> Nur Umfeld</label>
+
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <label style={labelS}>Person fokussieren</label>
+                {(focusId || focusQuery) && (
+                  <button
+                    onClick={() => { setFocusId(""); setFocusQuery(""); }}
+                    style={{ ...btnBase, padding:"6px 10px", fontSize:12, background:"#f3f4f6" }}
+                    title="Suche & Fokus zurücksetzen"
+                  >
+                    Zurücksetzen
+                  </button>
+                )}
               </div>
+
+              <div style={{ position:"relative" }} ref={focusRef}>
+                <input
+                  value={focusQuery}
+                  onFocus={()=>setFocusOpen(true)}
+                  onChange={(e)=>{ setFocusQuery(e.target.value); setFocusOpen(true); }}
+                  onKeyDown={(e)=>{
+                    if (e.key === "Enter") {
+                      const low = focusQuery.trim().toLowerCase();
+                      const exact = nodeOptionsSorted.find(n =>
+                        String(n.id).toLowerCase()===low || (n.label||"").toLowerCase()===low
+                      );
+                      const first = exact || filteredFocus[0];
+                      if (first) commitFocus(first.id);
+                    }
+                  }}
+                  placeholder="Suchen oder wählen…"
+                  style={{ ...inputS, paddingRight: 38 }}
+                />
+
+                {(focusQuery || focusId) && (
+                  <button
+                    onClick={() => { setFocusId(""); setFocusQuery(""); }}
+                    title="Eingabe leeren"
+                    aria-label="Eingabe leeren"
+                    style={{
+                      position:"absolute", right:10, top:"50%", transform:"translateY(-50%)",
+                      width:24, height:24, borderRadius:12, border:"none",
+                      background:"transparent", cursor:"pointer", fontSize:18, lineHeight:1, opacity:.55
+                    }}
+                  >×</button>
+                )}
+
+                {focusOpen && (
+                  <div
+                    style={{
+                      position:"absolute", left:0, right:0, marginTop:6, zIndex:5,
+                      background:"#fff", border:`1px solid ${T.line}`, borderRadius:12,
+                      boxShadow:T.shadow, maxHeight:280, overflowY:"auto"
+                    }}
+                  >
+                    {filteredFocus.length ? filteredFocus.map(p=>(
+                      <div
+                        key={p.id}
+                        onMouseDown={(e)=>e.preventDefault()}
+                        onClick={()=>commitFocus(p.id)}
+                        style={{ padding:"8px 10px", cursor:"pointer", borderBottom:"1px solid #f1f5f9" }}
+                        title={`${p.label} (${p.id})`}
+                      >
+                        <div style={{ fontWeight:600 }}>{p.label}</div>
+                        <div style={{ fontSize:12, opacity:.65 }}>{p.id}</div>
+                      </div>
+                    )) : <div style={{ padding:10, fontSize:13, opacity:.7 }}>Keine Treffer.</div>}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display:"flex", gap:12, marginTop:8, alignItems:"center" }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={onlyNeighborhood}
+                    onChange={(e)=>setOnlyNeighborhood(e.target.checked)}
+                  />{" "}
+                  Nur Umfeld
+                </label>
+              </div>
+
               <div style={{ marginTop:10 }}>
                 <label style={labelS}>Tiefe (Hops): {depth}</label>
-                <input type="range" min={1} max={3} step={1} value={depth} onChange={(e)=>setDepth(parseInt(e.target.value))} style={{ width:"100%" }} />
+                <div style={{ width:"100%" }}>
+                  <input
+                    type="range"
+                    min={1}
+                    max={3}
+                    step={1}
+                    value={depth}
+                    onChange={(e)=>setDepth(parseInt(e.target.value))}
+                    style={{ width:"100%", maxWidth:"100%" }}
+                  />
+                </div>
               </div>
+
               <div style={{ marginTop:10 }}>
                 <label style={labelS}>Beschriftungen</label>
                 {["always","focus","off"].map(k=>(
@@ -307,6 +388,7 @@ export default function SimsRelationshipExplorer() {
               </div>
             </div>
 
+            {/* Legende / Typen */}
             <div style={panel}>
               <div style={{ fontWeight:700, marginBottom:6 }}>Legende / Beziehungstypen</div>
               <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:8 }}>
@@ -333,18 +415,18 @@ export default function SimsRelationshipExplorer() {
               </div>
             </div>
 
+            {/* Neue Person */}
             <div style={panel}>
-              <div style={{ fontWeight:700, marginBottom:6 }}>Neue Person (schnell)</div>
+              <div style={{ fontWeight:700, marginBottom:6 }}>Neue Person</div>
               <label style={labelS}>Name</label>
               <input style={inputS} value={newPersonLabel} onChange={(e)=>setNewPersonLabel(e.target.value)} placeholder="Name" />
               <label style={labelS}>Bild (optional)</label>
               <input type="file" accept="image/*" onChange={(e)=>setNewPersonImgFile(e.target.files?.[0]||null)} style={{ marginBottom:10 }} />
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                <button style={btn(true)} onClick={addPerson}>Hinzufügen</button>
-                <button style={btn()} onClick={handleRequestCreateSim}>Ausführlich anlegen…</button>
-              </div>
+              <button style={btn(true)} onClick={addPerson}>Hinzufügen (numerische ID)</button>
+              <div style={{ fontSize:12, color:T.subtext, marginTop:6 }}>Nächste ID: {nextFreeNumericId()}</div>
             </div>
 
+            {/* Beziehung CRUD */}
             <div style={panel}>
               <div style={{ fontWeight:700, marginBottom:6 }}>Beziehung hinzufügen / ändern</div>
               <label style={labelS}>Quelle</label>
@@ -370,6 +452,7 @@ export default function SimsRelationshipExplorer() {
               {selectedEdgeId && <div style={{ fontSize:12, color:T.subtext, marginTop:6 }}>Ausgewählte Kante: {selectedEdgeId}</div>}
             </div>
 
+            {/* Daten Import/Export */}
             <div style={panel}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Daten</div>
               <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
@@ -382,7 +465,7 @@ export default function SimsRelationshipExplorer() {
           </>
         ) : (
           <>
-            {/* Galerie-Sidebar (nur Daten – Hintergrund steuert die Galerie selbst in ihrer Toolbar) */}
+            {/* Galerie – nur Datenpanel hier */}
             <div style={panel}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Daten</div>
               <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
@@ -419,17 +502,15 @@ export default function SimsRelationshipExplorer() {
             THEME={THEME}
             EDGE_STYLE={EDGE_STYLE}
             onOpenInfo={openInfo}
-            onRequestCreateSim={handleRequestCreateSim}   // ✅ Explorer öffnet Create-Modal
           />
         ) : (
           <GalleryView
             data={data}
             THEME={THEME}
             FIELD_TEMPLATES={FIELD_TEMPLATES}
-            onOpenInfo={openInfo}                         // ✅ Infos bearbeiten aus Galerie
+            onOpenInfo={openInfo}
             onFocusInExplorer={(id)=>{ setFocusId(id); setView("explorer"); }}
 
-            /* Hintergrund nur für Galerie */
             bgImage={bgImage}
             bgOpacity={bgOpacity}
             onBgUpload={onBgUpload}
@@ -437,7 +518,6 @@ export default function SimsRelationshipExplorer() {
             onBgClear={onBgClear}
 
             onChange={(next)=>setData(next)}
-            onRequestCreateSim={handleRequestCreateSim}   // ✅ Galerie öffnet Create-Modal
           />
         )}
       </div>
@@ -451,142 +531,6 @@ export default function SimsRelationshipExplorer() {
           FIELD_TEMPLATES={FIELD_TEMPLATES}
           THEME={THEME}
         />
-      )}
-
-      {/* Create-Modal */}
-      {createOpen && (
-        <div
-          onClick={handleCreateCancel}
-          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.25)", display:"flex",
-                   alignItems:"center", justifyContent:"center", zIndex: 1000 }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: "min(720px, 95vw)", maxHeight:"90vh", overflow:"auto",
-                     padding: 16, borderRadius: 16, background: T.glassBg,
-                     border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(8px)" }}
-          >
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 12 }}>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>Neuen Sim anlegen</div>
-              <button onClick={handleCreateCancel}
-                      style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background: T.accentSoft }}>
-                Schliessen
-              </button>
-            </div>
-
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:12 }}>
-              <div style={{ gridColumn:"1/-1" }}>
-                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Name</label>
-                <input
-                  value={createForm.name}
-                  onChange={(e)=>setCreateForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="z. B. Antonia Sommer"
-                  style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12,
-                           background:"rgba(255,255,255,0.85)", outline:"none", color:T.text }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Bild (optional)</label>
-                <input type="file" accept="image/*"
-                  onChange={(e)=> setCreateForm(f => ({ ...f, file: e.target.files?.[0] || null }))}
-                />
-              </div>
-
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <input type="checkbox" checked={createForm.alive}
-                       onChange={(e)=> setCreateForm(f => ({ ...f, alive: e.target.checked }))}/>
-                <span>Lebend</span>
-              </div>
-
-              <div>
-                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Alter</label>
-                <select value={createForm.age} onChange={(e)=>setCreateForm(f=>({...f, age:e.target.value}))}
-                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
-                  <option value="">– wählen –</option>
-                  {AGE_GROUPS.map(a=><option key={a} value={a}>{a}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Okkult</label>
-                <select value={createForm.occult} onChange={(e)=>setCreateForm(f=>({...f, occult:e.target.value}))}
-                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
-                  <option value="">– wählen –</option>
-                  {OCCULT_TYPES.map(o=><option key={o} value={o}>{o}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Job/Karriere</label>
-                <select value={createForm.career} onChange={(e)=>setCreateForm(f=>({...f, career:e.target.value}))}
-                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
-                  <option value="">– wählen –</option>
-                  {CAREERS.map(c=><option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Karrierestufe</label>
-                <input type="number" min={0} max={15} step={1}
-                       value={createForm.careerLevel}
-                       onChange={(e)=>setCreateForm(f=>({...f, careerLevel: parseInt(e.target.value||"0",10)}))}
-                       style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}/>
-              </div>
-
-              <div>
-                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Bestreben (Aspiration)</label>
-                <select value={createForm.aspiration} onChange={(e)=>setCreateForm(f=>({...f, aspiration:e.target.value}))}
-                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
-                  <option value="">– wählen –</option>
-                  {ASPIRATIONS.map(a=><option key={a} value={a}>{a}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Berühmtheit</label>
-                <select value={String(createForm.fame)} onChange={(e)=>setCreateForm(f=>({...f, fame: parseInt(e.target.value,10)}))}
-                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
-                  {FAME_STARS.map(s=><option key={s} value={s}>{s} ⭐</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Ruf</label>
-                <select value={createForm.reputation} onChange={(e)=>setCreateForm(f=>({...f, reputation:e.target.value}))}
-                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
-                  {REPUTATIONS.map(r=><option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-
-              <div style={{ gridColumn:"1/-1" }}>
-                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Eigenschaften (Traits)</label>
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(180px, 1fr))", gap:8,
-                              padding:8, border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.6)", maxHeight:220, overflowY:"auto" }}>
-                  {TRAITS.map(t => (
-                    <label key={t} style={{ display:"flex", alignItems:"center", gap:8, fontSize:13 }}>
-                      <input type="checkbox"
-                             checked={createForm.traits.includes(t)}
-                             onChange={()=> setCreateForm(f => ({ ...f, traits: f.traits.includes(t) ? f.traits.filter(x=>x!==t) : [...f.traits, t] }))}/>
-                      {t}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:14 }}>
-              <button onClick={handleCreateCancel}
-                      style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background: T.accentSoft }}>
-                Abbrechen
-              </button>
-              <button onClick={handleCreateSubmit}
-                      style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background: T.accent, color:"#fff" }}>
-                Anlegen
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 // src/views/ExplorerView.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import cytoscape from "cytoscape";
 import coseBilkent from "cytoscape-cose-bilkent";
 cytoscape.use(coseBilkent);
@@ -17,20 +17,20 @@ export default function ExplorerView({
   onEdgeSelected,          // ({ id, source, target, type, strength }) => void
   THEME,
   EDGE_STYLE,
-  bgImage,
-  bgOpacity = 0.5,         // Default
+  bgImage,                 // aktuell im Explorer ungenutzt
+  bgOpacity,               // aktuell im Explorer ungenutzt
   onBgUpload, onBgOpacity, onBgClear,
   onOpenInfo,              // (nodeId) => void
-  onRequestCreateSim,      // Parent öffnet Create-Modal
+  onRequestCreateSim,      // optional: Parent öffnet „Neuen Sim“-Modal
 }) {
   const T = THEME;
-  const wrapRef = useRef(null);
-  const cyRef = useRef(null);
+  const wrapRef = useRef(null);   // Cytoscape-Container
+  const cyRef = useRef(null);     // Cytoscape-Instanz
 
-  // Kontextmenüs
-  const [ctx, setCtx]       = useState({ open:false, x:0, y:0, nodeId:"" });
+  // ---------- Kontextmenü-States ----------
+  const [ctx, setCtx] = useState({ open:false, x:0, y:0, nodeId:"" });
   const [edgeCtx, setEdgeCtx] = useState({ open:false, x:0, y:0, edgeId:"" });
-  const [bgCtx, setBgCtx]   = useState({ open:false, x:0, y:0 });
+  const [bgCtx, setBgCtx] = useState({ open:false, x:0, y:0 });
 
   // Node-Edit
   const [editId, setEditId] = useState("");
@@ -40,14 +40,17 @@ export default function ExplorerView({
   // Edge-Edit
   const [edgeEdit, setEdgeEdit] = useState({ open:false, id:"", type:"friend", strength:0.5 });
 
-  // sichere Opacity
-  const opa = (() => {
-    const n = Number(bgOpacity);
-    if (!Number.isFinite(n)) return 0.5;
-    return Math.min(0.9, Math.max(0.1, n));
-  })();
+  // NEU: Beziehung-hinzufügen Dialog
+  const DEFAULT_EDGE_TYPE = useMemo(() => Object.keys(EDGE_STYLE)[0] || "friend", [EDGE_STYLE]);
+  const [addRel, setAddRel] = useState({
+    open:false,
+    sourceId:"",
+    targetId:"",
+    type:"friend",
+    strength:0.8,
+  });
 
-  // Menü-Position container-relativ
+  // Koordinaten für Kontextmenüs (Container-relativ, geclamped)
   const getMenuXY = React.useCallback((evt) => {
     const rect = wrapRef.current?.getBoundingClientRect();
     const cx = evt?.originalEvent?.clientX ?? evt?.renderedPosition?.x ?? 20;
@@ -58,7 +61,7 @@ export default function ExplorerView({
     return { x, y };
   }, []);
 
-  // Browser-Kontextmenü unterdrücken
+  // Native Browser-Kontextmenüs blocken (nur in diesem Container)
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -67,7 +70,7 @@ export default function ExplorerView({
     return () => el.removeEventListener("contextmenu", prevent);
   }, []);
 
-  // Menüs bei Scroll/Resize zu
+  // Menüs bei Scroll/Resize schliessen
   useEffect(() => {
     const close = () => {
       setCtx(m => ({ ...m, open:false }));
@@ -82,20 +85,7 @@ export default function ExplorerView({
     };
   }, []);
 
-  // ESC schliesst Menüs (nice to have)
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        setCtx(m => ({ ...m, open:false }));
-        setEdgeCtx(m => ({ ...m, open:false }));
-        setBgCtx({ open:false, x:0, y:0 });
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  // Cytoscape init
+  // ---------- Cytoscape init (einmalig) ----------
   useEffect(() => {
     const cy = cytoscape({
       container: wrapRef.current,
@@ -143,7 +133,7 @@ export default function ExplorerView({
         { selector: "edge.dimmed", style: { opacity: 0.15 } },
         { selector: ".hidden", style: { display: "none" } },
       ],
-      wheelSensitivity: 0.2,
+      wheelSensitivity: 0.22,
     });
 
     cyRef.current = cy;
@@ -154,8 +144,12 @@ export default function ExplorerView({
       setBgCtx({ open:false, x:0, y:0 });
     };
 
-    // Interaktionen
-    const onNodeTap = (evt) => { onFocus?.(evt.target.id()); closeAllMenus(); };
+    // Node/Edge Interaktionen
+    const onNodeTap = (evt) => {
+      const id = evt.target.id();
+      onFocus?.(id);
+      closeAllMenus();
+    };
     const onNodeOver = (evt) => evt.target.addClass("hovered");
     const onNodeOut  = (evt) => evt.target.removeClass("hovered");
 
@@ -185,17 +179,21 @@ export default function ExplorerView({
 
     // Kontextmenüs
     const onNodeCtx = (evt) => {
+      const id = evt.target.id();
       const p = getMenuXY(evt);
-      setCtx({ open: true, x: p.x, y: p.y, nodeId: evt.target.id() });
+      setCtx({ open: true, x: p.x, y: p.y, nodeId: id });
       setEdgeCtx({ open: false, x: 0, y: 0, edgeId: "" });
       setBgCtx({ open: false, x: 0, y: 0 });
     };
+
     const onEdgeCtx = (evt) => {
+      const e = evt.target;
       const p = getMenuXY(evt);
-      setEdgeCtx({ open: true, x: p.x, y: p.y, edgeId: evt.target.id() });
+      setEdgeCtx({ open: true, x: p.x, y: p.y, edgeId: e.id() });
       setCtx({ open: false, x: 0, y: 0, nodeId: "" });
       setBgCtx({ open: false, x: 0, y: 0 });
     };
+
     const onBgCtx = (evt) => {
       if (evt.target === cy) {
         const p = getMenuXY(evt);
@@ -207,7 +205,7 @@ export default function ExplorerView({
 
     const onAnyInteraction = () => closeAllMenus();
 
-    // Registrieren
+    // Registrierung
     cy.on("tap", "node", onNodeTap);
     cy.on("mouseover", "node", onNodeOver);
     cy.on("mouseout",  "node", onNodeOut);
@@ -218,11 +216,6 @@ export default function ExplorerView({
     cy.on("cxttap", "node", onNodeCtx);
     cy.on("cxttap", "edge", onEdgeCtx);
     cy.on("cxttap", onBgCtx);
-
-    // Long-press für Touch
-    cy.on("taphold", "node", onNodeCtx);
-    cy.on("taphold", "edge", onEdgeCtx);
-    cy.on("taphold", onBgCtx);
 
     cy.on("tap zoom drag", onAnyInteraction);
 
@@ -239,10 +232,6 @@ export default function ExplorerView({
       cy.off("cxttap", "edge", onEdgeCtx);
       cy.off("cxttap", onBgCtx);
 
-      cy.off("taphold", "node", onNodeCtx);
-      cy.off("taphold", "edge", onEdgeCtx);
-      cy.off("taphold", onBgCtx);
-
       cy.off("tap zoom drag", onAnyInteraction);
 
       cy.destroy();
@@ -250,7 +239,7 @@ export default function ExplorerView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Build/Update (Data + Layout)
+  // ---------- Build/Update ----------
   useEffect(() => {
     const cy = cyRef.current; if (!cy) return;
 
@@ -268,8 +257,10 @@ export default function ExplorerView({
       })),
     ]);
 
+    // Edge-Stil + Labels
     Object.entries(EDGE_STYLE).forEach(([type, s]) => {
-      cy.style().selector(`edge[type = "${type}"]`)
+      cy.style()
+        .selector(`edge[type = "${type}"]`)
         .style({ "line-color": s.color, "line-style": s.lineStyle, width: s.width })
         .update();
     });
@@ -292,7 +283,7 @@ export default function ExplorerView({
     }).run();
   }, [data, EDGE_STYLE, edgeLabelMode]);
 
-  // Sichtbarkeit / Fokus / Labels
+  // ---------- Sichtbarkeit / Fokus / Labels ----------
   useEffect(() => {
     const cy = cyRef.current; if (!cy) return;
 
@@ -331,7 +322,7 @@ export default function ExplorerView({
     }
   }, [focusId, depth, onlyNeighborhood, visibleTypes, labelMode]);
 
-  // Node-Edit
+  // ---------- Node-Edit Helpers ----------
   function openEditPerson(id) {
     const n = data.nodes.find(x => x.id === id); if (!n) return;
     setEditId(id);
@@ -370,7 +361,7 @@ export default function ExplorerView({
     onDataChange(next);
   }
 
-  // Edge-Edit
+  // ---------- Edge-Edit Helpers ----------
   function openEdgeEdit(edgeId) {
     const e = data.edges.find(x => (x.id || `${x.source}-${x.target}-${x.type}`) === edgeId);
     if (!e) return;
@@ -395,15 +386,52 @@ export default function ExplorerView({
     setEdgeCtx({ open:false, x:0, y:0, edgeId:"" });
   }
 
-  // Smart-Transform (optional, verhindert Offscreen-Menüs)
-  function smartTransform(x, y, minW = 240, minH = 180) {
-    const rect = wrapRef.current?.getBoundingClientRect();
-    if (!rect) return "translateY(8px)";
-    const flipX = x + minW > rect.width - 8;
-    const flipY = y + minH > rect.height - 8;
-    return `translate(${flipX ? "-100%" : "0"}, ${flipY ? "-100%" : "8px"})`;
+  // ---------- Beziehung hinzufügen (NEU) ----------
+  const allTargets = useMemo(
+    () => data.nodes.map(n => ({ id:n.id, label:n.label || n.id })),
+    [data.nodes]
+  );
+
+  function openAddRelFromNode(sourceId) {
+    setCtx(p => ({ ...p, open:false }));
+    setAddRel({
+      open:true,
+      sourceId,
+      targetId:"",
+      type: DEFAULT_EDGE_TYPE,
+      strength: 0.8,
+    });
   }
 
+  function confirmAddRel() {
+    const { sourceId, targetId, type, strength } = addRel;
+    if (!sourceId || !targetId || sourceId === targetId) return;
+    const next = JSON.parse(JSON.stringify(data));
+    const existing = next.edges.find(e => e.source===sourceId && e.target===targetId && e.type===type);
+    if (existing) {
+      existing.strength = strength;
+    } else {
+      next.edges.push({ id:`e_${Date.now()}`, source:sourceId, target:targetId, type, strength });
+    }
+    onDataChange(next);
+    setAddRel({ open:false, sourceId:"", targetId:"", type: DEFAULT_EDGE_TYPE, strength:0.8 });
+  }
+
+  // Gemeinsamer Stil für Input/Select im AddRel-Dialog (Fix: boxSizing)
+  const addRelFieldS = {
+    width:"100%",
+    maxWidth:"100%",
+    boxSizing:"border-box",
+    padding:"10px 12px",
+    border:`1px solid ${T.line}`,
+    borderRadius:12,
+    background:"rgba(255,255,255,0.65)",
+    color:T.text,
+    outline:"none",
+    marginBottom:8
+  };
+
+  // ---------- Render ----------
   return (
     <div
       style={{
@@ -417,46 +445,19 @@ export default function ExplorerView({
         overflow:"hidden"
       }}
     >
-      {/* Background-Layer */}
-      <div
-        aria-hidden
-        style={{
-          position:"absolute",
-          inset:0,
-          backgroundImage: bgImage ? `url(${bgImage})` : "none",
-          backgroundSize:"cover",
-          backgroundPosition:"center",
-          opacity: bgImage ? opa : 0,
-          transition:"opacity .2s ease",
-          zIndex:0
-        }}
-      />
       {/* Cytoscape-Container */}
-      <div ref={wrapRef} style={{ position:"absolute", inset:0, borderRadius:18, zIndex:1 }} />
+      <div ref={wrapRef} style={{ position:"absolute", inset:0, borderRadius:18 }} />
 
       {/* Kontextmenü: Hintergrund */}
       {bgCtx.open && (
         <div
-          style={{ position:"absolute", left:bgCtx.x, top:bgCtx.y, transform: smartTransform(bgCtx.x, bgCtx.y), minWidth:240, zIndex:39,
+          style={{ position:"absolute", left:bgCtx.x, top:bgCtx.y, transform:"translateY(8px)", minWidth:240, zIndex:39,
                    borderRadius:12, background:T.glassBg, border:`1px solid ${T.line}`, boxShadow:T.shadow, overflow:"hidden" }}
           onClick={(e)=>e.stopPropagation()}
         >
           <div
             style={{ padding:"10px 12px", cursor:"pointer", borderBottom:`1px solid ${T.line}` }}
-            onClick={()=>{
-              if (onRequestCreateSim) onRequestCreateSim();
-              else {
-                // Fallback: direkt Node anlegen
-                const next = structuredClone(data);
-                const base = "sim";
-                let i = 1, id = base;
-                const taken = new Set(next.nodes.map(n => n.id));
-                while (taken.has(id)) id = `${base}-${++i}`;
-                next.nodes.push({ id, label: `Neuer Sim${i > 1 ? ` ${i}` : ""}`, img: "", alive: 1 });
-                onDataChange(next);
-              }
-              setBgCtx({ open:false, x:0, y:0 });
-            }}
+            onClick={()=>{ onRequestCreateSim?.(); setBgCtx({ open:false, x:0, y:0 }); }}
           >
             ➕ Neuen Sim anlegen…
           </div>
@@ -472,15 +473,9 @@ export default function ExplorerView({
             />
           </label>
           <div style={{ padding:"8px 12px" }}>
-            <div style={{ fontSize:12, color:T.subtext, marginBottom:6 }}>
-              Transparenz: {opa.toFixed(2)}
-            </div>
-            <input
-              type="range" min={0.1} max={0.9} step={0.05}
-              value={opa}
-              onChange={(e)=>onBgOpacity?.(parseFloat(e.target.value))}
-              style={{ width:"100%" }}
-            />
+            <div style={{ fontSize:12, color:T.subtext, marginBottom:6 }}>Transparenz: {Number(bgOpacity||0.3).toFixed(2)}</div>
+            <input type="range" min={0.1} max={0.9} step={0.05} defaultValue={bgOpacity||0.3}
+                   onChange={(e)=>onBgOpacity?.(parseFloat(e.target.value))} style={{ width:"100%" }} />
           </div>
           <div style={{ padding:"10px 12px", cursor:"pointer", color:"#b3261e" }} onClick={()=>onBgClear?.()}>🗑️ Hintergrund zurücksetzen</div>
           <div style={{ height:1, background:T.line }} />
@@ -491,7 +486,7 @@ export default function ExplorerView({
       {/* Kontextmenü: Node */}
       {ctx.open && (
         <div
-          style={{ position:"absolute", left:ctx.x, top:ctx.y, transform: smartTransform(ctx.x, ctx.y, 200, 200), minWidth:200, zIndex:40,
+          style={{ position:"absolute", left:ctx.x, top:ctx.y, transform:"translateY(8px)", minWidth:220, zIndex:40,
                    borderRadius:12, background:T.glassBg, border:`1px solid ${T.line}`, boxShadow:T.shadow, overflow:"hidden" }}
           onClick={(e)=>e.stopPropagation()}
         >
@@ -500,9 +495,16 @@ export default function ExplorerView({
             ✏️ Bearbeiten…
           </div>
           <div style={{ padding:"8px 10px", cursor:"pointer" }}
-               onClick={()=>{ onOpenInfo?.(ctx.nodeId); setCtx((p)=>({ ...p, open:false })); }}>
+               onClick={()=>onOpenInfo?.(ctx.nodeId)}>
             ℹ️ Infos…
           </div>
+
+          {/* NEU */}
+          <div style={{ padding:"8px 10px", cursor:"pointer" }}
+               onClick={()=>openAddRelFromNode(ctx.nodeId)}>
+            ➕ Beziehung hinzufügen…
+          </div>
+
           <div style={{ height:1, background:T.line }} />
           <div style={{ padding:"8px 10px", cursor:"pointer" }}
                onClick={()=>deleteAllRelationsOf(ctx.nodeId)}>
@@ -523,7 +525,7 @@ export default function ExplorerView({
       {/* Kontextmenü: Edge */}
       {edgeCtx.open && (
         <div
-          style={{ position:"absolute", left:edgeCtx.x, top:edgeCtx.y, transform: smartTransform(edgeCtx.x, edgeCtx.y), minWidth:200, zIndex:41,
+          style={{ position:"absolute", left:edgeCtx.x, top:edgeCtx.y, transform:"translateY(8px)", minWidth:200, zIndex:41,
                    borderRadius:12, background:T.glassBg, border:`1px solid ${T.line}`, boxShadow:T.shadow, overflow:"hidden" }}
           onClick={(e)=>e.stopPropagation()}
         >
@@ -555,18 +557,9 @@ export default function ExplorerView({
             <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Bild ersetzen (optional)</label>
             <input type="file" accept="image/*" onChange={(e)=>setEditImgFile(e.target.files?.[0]||null)} style={{ marginBottom:10 }} />
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`,
-                               background:T.accent, color:"#fff" }} onClick={saveEditPerson}>
-                Speichern
-              </button>
-              <button style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`,
-                               background:T.accentSoft }} onClick={()=>setEditId("")}>
-                Abbrechen
-              </button>
-              <button style={{ padding:"9px 12px", borderRadius:12, border:"1px solid #f5b9b9",
-                               background:"#ffecec" }} onClick={()=>deletePerson()}>
-                Person löschen
-              </button>
+              <button style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background:T.accent, color:"#fff" }} onClick={saveEditPerson}>Speichern</button>
+              <button style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background:T.accentSoft }} onClick={()=>setEditId("")}>Abbrechen</button>
+              <button style={{ padding:"9px 12px", borderRadius:12, border:"1px solid #f5b9b9", background:"#ffecec" }} onClick={()=>deletePerson()}>Person löschen</button>
             </div>
           </div>
         </div>
@@ -605,6 +598,70 @@ export default function ExplorerView({
               </button>
               <button style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background:T.accent, color:"#fff" }}
                       onClick={saveEdgeEdit}>
+                Speichern
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Beziehung hinzufügen (NEU) */}
+      {addRel.open && (
+        <div onClick={()=>setAddRel(s=>({ ...s, open:false }))}
+             style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.25)", display:"flex",
+                      alignItems:"center", justifyContent:"center", zIndex:52 }}>
+          <div onClick={(e)=>e.stopPropagation()}
+               style={{ width:460, padding:16, borderRadius:16, background:T.glassBg,
+                        border:`1px solid ${T.line}`, boxShadow:T.shadow, backdropFilter:"blur(8px)" }}>
+            <div style={{ fontWeight:700, marginBottom:8 }}>Beziehung hinzufügen</div>
+
+            <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Quelle</label>
+            <input
+              disabled
+              value={(data.nodes.find(n=>n.id===addRel.sourceId)?.label) || addRel.sourceId}
+              style={addRelFieldS}
+            />
+
+            <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Ziel</label>
+            <select
+              value={addRel.targetId}
+              onChange={(e)=>setAddRel(s=>({ ...s, targetId:e.target.value }))}
+              style={addRelFieldS}
+            >
+              <option value="">– wählen –</option>
+              {allTargets.filter(n => n.id !== addRel.sourceId).map(n =>
+                <option key={n.id} value={n.id}>{n.label}</option>
+              )}
+            </select>
+
+            <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Typ</label>
+            <select
+              value={addRel.type}
+              onChange={(e)=>setAddRel(s=>({ ...s, type:e.target.value }))}
+              style={addRelFieldS}
+            >
+              {Object.entries(EDGE_STYLE).map(([k,v]) =>
+                <option key={k} value={k}>{v.emoji} {v.label}</option>
+              )}
+            </select>
+
+            <label style={{ display:"block", fontSize:12, color:T.subtext, margin:"8px 0 6px" }}>
+              Stärke: {addRel.strength.toFixed(2)}
+            </label>
+            <input type="range" min={0} max={1} step={0.05} value={addRel.strength}
+                   onChange={(e)=>setAddRel(s=>({ ...s, strength: parseFloat(e.target.value) }))}
+                   style={{ width:"100%" }} />
+
+            <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:14 }}>
+              <button style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background:T.accentSoft }}
+                      onClick={()=>setAddRel(s=>({ ...s, open:false }))}>
+                Abbrechen
+              </button>
+              <button
+                style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background:T.accent, color:"#fff" }}
+                onClick={confirmAddRel}
+                disabled={!addRel.sourceId || !addRel.targetId}
+              >
                 Speichern
               </button>
             </div>
