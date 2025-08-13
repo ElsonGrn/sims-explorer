@@ -1,5 +1,6 @@
 // src/shared/InfoModal.jsx
 import React, { useMemo, useState, useEffect } from "react";
+import { GENDER_OPTIONS, normalizeGender } from "./gender";
 
 /**
  * Scroll-/Viewport-freundliches InfoModal:
@@ -52,6 +53,7 @@ export default function InfoModal({ person, onClose, onSave, THEME }) {
 
   const current = person?.info || {};
 
+  const [gender, setGender] = useState(() => normalizeGender(current.gender));
   const [age, setAge] = useState(current.age || "");
   const [occult, setOccult] = useState(current.occult || "");
   const [career, setCareer] = useState(current.career || "");
@@ -74,13 +76,14 @@ export default function InfoModal({ person, onClose, onSave, THEME }) {
     setTraits((prev) => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
   };
 
-  const valid = useMemo(() => true, [age, occult, career, careerLevel, traits, aspiration, fame, reputation]);
+  const valid = useMemo(() => true, [gender, age, occult, career, careerLevel, traits, aspiration, fame, reputation]);
 
   const save = () => {
     if (!valid) return;
     onSave?.({
       info: {
         ...person.info,
+        gender: normalizeGender(gender),
         age,
         occult,
         career,
@@ -150,6 +153,13 @@ export default function InfoModal({ person, onClose, onSave, THEME }) {
               gap:12, marginBottom:12
             }}
           >
+            <div>
+              <label style={labelS}>Geschlecht</label>
+              <select value={gender} onChange={(e)=>setGender(e.target.value)} style={inputS}>
+                {GENDER_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </div>
+
             <div>
               <label style={labelS}>Alter</label>
               <select value={age} onChange={(e)=>setAge(e.target.value)} style={inputS}>
