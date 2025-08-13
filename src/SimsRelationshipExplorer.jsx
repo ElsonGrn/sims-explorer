@@ -84,10 +84,6 @@ export default function SimsRelationshipExplorer() {
   // InfoModal
   const [infoModal, setInfoModal] = useState({ open:false, id:"" });
 
-  // ✅ Create-Modal (vom Explorer-Kontextmenü ausgelöst)
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: "", alive: true, file: null });
-
   // Persistenz
   useEffect(() => { try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {} }, [data]);
   useEffect(() => { try { localStorage.setItem(LS_UI, JSON.stringify({ view, focusId, depth, onlyNeighborhood })); } catch {} }, [view, focusId, depth, onlyNeighborhood]);
@@ -118,7 +114,7 @@ export default function SimsRelationshipExplorer() {
         o.nodes = o.nodes.map((n) => ({
           alive:n.alive!==false,
           info:n.info&&Array.isArray(n.info.fields)?n.info:{fields:[]},
-          img:"",
+          img:"", // Bilder optional
           ...n
         }));
         setData(o);
@@ -137,22 +133,15 @@ export default function SimsRelationshipExplorer() {
     URL.revokeObjectURL(url);
   }
 
-  // Personen (Sidebar „Neue Person“)
+  // Personen
   const [newPersonLabel, setNewPersonLabel] = useState("");
   const [newPersonImgFile, setNewPersonImgFile] = useState(null);
   function addPerson() {
     if (!newPersonLabel.trim()) return alert("Bitte Namen eingeben");
-    const base = makeIdFromLabel(newPersonLabel);
-    let id = base, i = 2;
-    while (data.nodes.some(n => n.id === id)) id = `${base}-${i++}`;
+    const id = makeIdFromLabel(newPersonLabel);
+    if (data.nodes.some(n=>n.id===id)) return alert("ID existiert bereits");
     const commit = (img) => {
-      setData(prev => ({
-        ...prev,
-        nodes:[
-          ...prev.nodes,
-          { id, label:newPersonLabel.trim() || id, img: img || "", alive:true, info:{ fields:[] } }
-        ]
-      }));
+      setData(prev => ({ ...prev, nodes:[...prev.nodes, { id, label:newPersonLabel.trim(), img: img || "", alive:true, info:{ fields:[] } }] }));
       setNewPersonLabel("");
       setNewPersonImgFile(null);
     };
@@ -195,14 +184,34 @@ export default function SimsRelationshipExplorer() {
     closeInfo();
   };
 
-  // 🔥 Create-Modal – vom ExplorerView geöffnet
+  // ====== Create-Modal (für Explorer + Galerie) ======
+  // Optionen (lokal – gern zentralisieren, falls gewünscht)
+  const AGE_GROUPS = ["Baby","Kleinkind","Kind","Teen","Junger Erwachsener","Erwachsener","Senior"];
+  const OCCULT_TYPES = ["Mensch","Vampir","Zauberer/Hexe","Alien","Meerjungfrau","Werwolf","Pflanzensim","Servo","Geist"];
+  const CAREERS = ["Arbeitslos","Schauspieler/in","Astronaut/in","Athlet/in","Business","Ingenieur/in","Entertainer/in","Kritiker/in","Koch/Köchin","Detektiv/in","Ärztin/Arzt","Gärtner/in","Jurist/in","Militär","Maler/in","Politiker/in","Wissenschaftler/in","Geheimagent/in","Social Media","Mode-Influencer/in","Tech-Guru","Autor/in","Öko-Designer/in","Naturschützer/in","Freelancer: Programmierer/in","Freelancer: Autor/in","Freelancer: Künstler/in","Freelancer: Fotograf/in"];
+  const TRAITS = ["Aktiv","Kreativ","Genie","Gesellig","Selbstsicher","Ordentlich","Verschmutzt","Faul","Kindisch","Spielverderber","Romantisch","Hitzkopf","Eifersüchtig","Ehrgeizig","Tollpatschig","Clumsy","Musikliebhaber/in","Bücherwurm","Geek","Hundefreund/in","Katzenfreund/in","Vegetarier/in","Bro","Schüchtern","Einsiedler/in","Snob","Materialistisch"];
+  const ASPIRATIONS = ["Familie","Liebe","Wissen","Natur","Reichtum","Kreativität","Ortgebunden","Athletik","Popularität","Kriminalität"];
+  const FAME_STARS = [0,1,2,3,4,5];
+  const REPUTATIONS = ["Sehr schlecht","Schlecht","Neutral","Gut","Sehr gut"];
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: "", alive: true, file: null,
+    age: "", occult: "", career: "", careerLevel: 0,
+    aspiration: "", fame: 0, reputation: "Neutral",
+    traits: [],
+  });
+
   function handleRequestCreateSim() {
-    setCreateForm({ name: "", alive: true, file: null });
+    setCreateForm({
+      name: "", alive: true, file: null,
+      age: "", occult: "", career: "", careerLevel: 0,
+      aspiration: "", fame: 0, reputation: "Neutral",
+      traits: [],
+    });
     setCreateOpen(true);
   }
-  function handleCreateCancel() {
-    setCreateOpen(false);
-  }
+  function handleCreateCancel() { setCreateOpen(false); }
   function handleCreateSubmit() {
     const name = (createForm.name || "").trim();
     const base = makeIdFromLabel(name || "Sim");
@@ -217,7 +226,17 @@ export default function SimsRelationshipExplorer() {
           label: name || id,
           img: imgData || "",
           alive: !!createForm.alive,
-          info: { fields: [] },
+          info: {
+            age: createForm.age || "",
+            occult: createForm.occult || "",
+            career: createForm.career || "",
+            careerLevel: Number(createForm.careerLevel) || 0,
+            traits: Array.isArray(createForm.traits) ? createForm.traits : [],
+            aspiration: createForm.aspiration || "",
+            fame: Number(createForm.fame) || 0,
+            reputation: createForm.reputation || "Neutral",
+            fields: [], // kompatibel
+          },
         });
         return next;
       });
@@ -315,12 +334,15 @@ export default function SimsRelationshipExplorer() {
             </div>
 
             <div style={panel}>
-              <div style={{ fontWeight:700, marginBottom:6 }}>Neue Person</div>
+              <div style={{ fontWeight:700, marginBottom:6 }}>Neue Person (schnell)</div>
               <label style={labelS}>Name</label>
               <input style={inputS} value={newPersonLabel} onChange={(e)=>setNewPersonLabel(e.target.value)} placeholder="Name" />
               <label style={labelS}>Bild (optional)</label>
               <input type="file" accept="image/*" onChange={(e)=>setNewPersonImgFile(e.target.files?.[0]||null)} style={{ marginBottom:10 }} />
-              <button style={btn(true)} onClick={addPerson}>Hinzufügen</button>
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                <button style={btn(true)} onClick={addPerson}>Hinzufügen</button>
+                <button style={btn()} onClick={handleRequestCreateSim}>Ausführlich anlegen…</button>
+              </div>
             </div>
 
             <div style={panel}>
@@ -396,17 +418,15 @@ export default function SimsRelationshipExplorer() {
             }}
             THEME={THEME}
             EDGE_STYLE={EDGE_STYLE}
-            /* ⟵ KEIN bgImage/bgOpacity mehr hier (Explorer nutzt sie nicht zwingend) */
             onOpenInfo={openInfo}
-            // 🔥 wichtig: öffnet das Create-Modal, wenn man im Explorer-Hintergrund „Neuen Sim anlegen…“ klickt
-            onRequestCreateSim={handleRequestCreateSim}
+            onRequestCreateSim={handleRequestCreateSim}   // ✅ Explorer öffnet Create-Modal
           />
         ) : (
           <GalleryView
             data={data}
             THEME={THEME}
             FIELD_TEMPLATES={FIELD_TEMPLATES}
-            onOpenInfo={openInfo}
+            onOpenInfo={openInfo}                         // ✅ Infos bearbeiten aus Galerie
             onFocusInExplorer={(id)=>{ setFocusId(id); setView("explorer"); }}
 
             /* Hintergrund nur für Galerie */
@@ -417,6 +437,7 @@ export default function SimsRelationshipExplorer() {
             onBgClear={onBgClear}
 
             onChange={(next)=>setData(next)}
+            onRequestCreateSim={handleRequestCreateSim}   // ✅ Galerie öffnet Create-Modal
           />
         )}
       </div>
@@ -432,52 +453,135 @@ export default function SimsRelationshipExplorer() {
         />
       )}
 
-      {/* ✅ Create Sim Modal (Explorer-Kontextmenü) */}
+      {/* Create-Modal */}
       {createOpen && (
         <div
           onClick={handleCreateCancel}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex",
-                   alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.25)", display:"flex",
+                   alignItems:"center", justifyContent:"center", zIndex: 1000 }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 420, padding: 16, borderRadius: 16, background: T.glassBg,
+            style={{ width: "min(720px, 95vw)", maxHeight:"90vh", overflow:"auto",
+                     padding: 16, borderRadius: 16, background: T.glassBg,
                      border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(8px)" }}
           >
-            <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 18 }}>Neuen Sim anlegen</div>
-
-            <label style={{ display: "block", fontSize: 12, color: T.subtext, marginBottom: 6 }}>Name</label>
-            <input
-              value={createForm.name}
-              onChange={(e) => setCreateForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="z. B. Antonia Sommer"
-              style={{ width: "100%", padding: "10px 12px", border: `1px solid ${T.line}`, borderRadius: 12,
-                       background: "rgba(255,255,255,0.8)", outline: "none", marginBottom: 10, color: T.text }}
-            />
-
-            <label style={{ display: "block", fontSize: 12, color: T.subtext, marginBottom: 6 }}>Bild (optional)</label>
-            <input
-              type="file" accept="image/*"
-              onChange={(e)=> setCreateForm(f => ({ ...f, file: e.target.files?.[0] || null }))}
-              style={{ marginBottom: 10 }}
-            />
-
-            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 14 }}>
-              <input
-                type="checkbox"
-                checked={createForm.alive}
-                onChange={(e)=> setCreateForm(f => ({ ...f, alive: e.target.checked }))}
-              />
-              Lebend
-            </label>
-
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>Neuen Sim anlegen</div>
               <button onClick={handleCreateCancel}
-                      style={{ padding: "9px 12px", borderRadius: 12, border: `1px solid ${T.line}`, background: T.accentSoft }}>
+                      style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background: T.accentSoft }}>
+                Schliessen
+              </button>
+            </div>
+
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:12 }}>
+              <div style={{ gridColumn:"1/-1" }}>
+                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Name</label>
+                <input
+                  value={createForm.name}
+                  onChange={(e)=>setCreateForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="z. B. Antonia Sommer"
+                  style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12,
+                           background:"rgba(255,255,255,0.85)", outline:"none", color:T.text }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Bild (optional)</label>
+                <input type="file" accept="image/*"
+                  onChange={(e)=> setCreateForm(f => ({ ...f, file: e.target.files?.[0] || null }))}
+                />
+              </div>
+
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <input type="checkbox" checked={createForm.alive}
+                       onChange={(e)=> setCreateForm(f => ({ ...f, alive: e.target.checked }))}/>
+                <span>Lebend</span>
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Alter</label>
+                <select value={createForm.age} onChange={(e)=>setCreateForm(f=>({...f, age:e.target.value}))}
+                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
+                  <option value="">– wählen –</option>
+                  {AGE_GROUPS.map(a=><option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Okkult</label>
+                <select value={createForm.occult} onChange={(e)=>setCreateForm(f=>({...f, occult:e.target.value}))}
+                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
+                  <option value="">– wählen –</option>
+                  {OCCULT_TYPES.map(o=><option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Job/Karriere</label>
+                <select value={createForm.career} onChange={(e)=>setCreateForm(f=>({...f, career:e.target.value}))}
+                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
+                  <option value="">– wählen –</option>
+                  {CAREERS.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Karrierestufe</label>
+                <input type="number" min={0} max={15} step={1}
+                       value={createForm.careerLevel}
+                       onChange={(e)=>setCreateForm(f=>({...f, careerLevel: parseInt(e.target.value||"0",10)}))}
+                       style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}/>
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Bestreben (Aspiration)</label>
+                <select value={createForm.aspiration} onChange={(e)=>setCreateForm(f=>({...f, aspiration:e.target.value}))}
+                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
+                  <option value="">– wählen –</option>
+                  {ASPIRATIONS.map(a=><option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Berühmtheit</label>
+                <select value={String(createForm.fame)} onChange={(e)=>setCreateForm(f=>({...f, fame: parseInt(e.target.value,10)}))}
+                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
+                  {FAME_STARS.map(s=><option key={s} value={s}>{s} ⭐</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Ruf</label>
+                <select value={createForm.reputation} onChange={(e)=>setCreateForm(f=>({...f, reputation:e.target.value}))}
+                        style={{ width:"100%", padding:"10px 12px", border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.85)" }}>
+                  {REPUTATIONS.map(r=><option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+
+              <div style={{ gridColumn:"1/-1" }}>
+                <label style={{ display:"block", fontSize:12, color:T.subtext, marginBottom:6 }}>Eigenschaften (Traits)</label>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(180px, 1fr))", gap:8,
+                              padding:8, border:`1px solid ${T.line}`, borderRadius:12, background:"rgba(255,255,255,0.6)", maxHeight:220, overflowY:"auto" }}>
+                  {TRAITS.map(t => (
+                    <label key={t} style={{ display:"flex", alignItems:"center", gap:8, fontSize:13 }}>
+                      <input type="checkbox"
+                             checked={createForm.traits.includes(t)}
+                             onChange={()=> setCreateForm(f => ({ ...f, traits: f.traits.includes(t) ? f.traits.filter(x=>x!==t) : [...f.traits, t] }))}/>
+                      {t}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:14 }}>
+              <button onClick={handleCreateCancel}
+                      style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background: T.accentSoft }}>
                 Abbrechen
               </button>
               <button onClick={handleCreateSubmit}
-                      style={{ padding: "9px 12px", borderRadius: 12, border: `1px solid ${T.line}`, background: T.accent, color: "#fff" }}>
+                      style={{ padding:"9px 12px", borderRadius:12, border:`1px solid ${T.line}`, background: T.accent, color:"#fff" }}>
                 Anlegen
               </button>
             </div>
