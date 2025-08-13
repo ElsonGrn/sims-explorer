@@ -84,6 +84,10 @@ export default function SimsRelationshipExplorer() {
   // InfoModal
   const [infoModal, setInfoModal] = useState({ open:false, id:"" });
 
+  // ✅ Create-Modal (vom Explorer-Kontextmenü ausgelöst)
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: "", alive: true, file: null });
+
   // Persistenz
   useEffect(() => { try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {} }, [data]);
   useEffect(() => { try { localStorage.setItem(LS_UI, JSON.stringify({ view, focusId, depth, onlyNeighborhood })); } catch {} }, [view, focusId, depth, onlyNeighborhood]);
@@ -133,15 +137,22 @@ export default function SimsRelationshipExplorer() {
     URL.revokeObjectURL(url);
   }
 
-  // Personen
+  // Personen (Sidebar „Neue Person“)
   const [newPersonLabel, setNewPersonLabel] = useState("");
   const [newPersonImgFile, setNewPersonImgFile] = useState(null);
   function addPerson() {
     if (!newPersonLabel.trim()) return alert("Bitte Namen eingeben");
-    const id = makeIdFromLabel(newPersonLabel);
-    if (data.nodes.some(n=>n.id===id)) return alert("ID existiert bereits");
+    const base = makeIdFromLabel(newPersonLabel);
+    let id = base, i = 2;
+    while (data.nodes.some(n => n.id === id)) id = `${base}-${i++}`;
     const commit = (img) => {
-      setData(prev => ({ ...prev, nodes:[...prev.nodes, { id, label:newPersonLabel.trim(), img: img || "", alive:true, info:{ fields:[] } }] }));
+      setData(prev => ({
+        ...prev,
+        nodes:[
+          ...prev.nodes,
+          { id, label:newPersonLabel.trim() || id, img: img || "", alive:true, info:{ fields:[] } }
+        ]
+      }));
       setNewPersonLabel("");
       setNewPersonImgFile(null);
     };
@@ -183,6 +194,44 @@ export default function SimsRelationshipExplorer() {
     setData(prev => ({ ...prev, nodes: prev.nodes.map(n => n.id === infoModal.id ? { ...n, ...patch } : n) }));
     closeInfo();
   };
+
+  // 🔥 Create-Modal – vom ExplorerView geöffnet
+  function handleRequestCreateSim() {
+    setCreateForm({ name: "", alive: true, file: null });
+    setCreateOpen(true);
+  }
+  function handleCreateCancel() {
+    setCreateOpen(false);
+  }
+  function handleCreateSubmit() {
+    const name = (createForm.name || "").trim();
+    const base = makeIdFromLabel(name || "Sim");
+    let id = base, i = 2;
+    while (data.nodes.some(n => n.id === id)) id = `${base}-${i++}`;
+
+    const commit = (imgData) => {
+      setData(prev => {
+        const next = deepClone(prev);
+        next.nodes.push({
+          id,
+          label: name || id,
+          img: imgData || "",
+          alive: !!createForm.alive,
+          info: { fields: [] },
+        });
+        return next;
+      });
+      setCreateOpen(false);
+    };
+
+    if (createForm.file) {
+      const r = new FileReader();
+      r.onload = () => commit(String(r.result));
+      r.readAsDataURL(createForm.file);
+    } else {
+      commit("");
+    }
+  }
 
   // Sidebar Styles
   const glass = { background: T.glassBg, border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(6px)" };
@@ -347,8 +396,10 @@ export default function SimsRelationshipExplorer() {
             }}
             THEME={THEME}
             EDGE_STYLE={EDGE_STYLE}
-            /* ⟵ KEIN bgImage/bgOpacity mehr hier */
+            /* ⟵ KEIN bgImage/bgOpacity mehr hier (Explorer nutzt sie nicht zwingend) */
             onOpenInfo={openInfo}
+            // 🔥 wichtig: öffnet das Create-Modal, wenn man im Explorer-Hintergrund „Neuen Sim anlegen…“ klickt
+            onRequestCreateSim={handleRequestCreateSim}
           />
         ) : (
           <GalleryView
@@ -379,6 +430,59 @@ export default function SimsRelationshipExplorer() {
           FIELD_TEMPLATES={FIELD_TEMPLATES}
           THEME={THEME}
         />
+      )}
+
+      {/* ✅ Create Sim Modal (Explorer-Kontextmenü) */}
+      {createOpen && (
+        <div
+          onClick={handleCreateCancel}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", display: "flex",
+                   alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: 420, padding: 16, borderRadius: 16, background: T.glassBg,
+                     border: `1px solid ${T.line}`, boxShadow: T.shadow, backdropFilter: "blur(8px)" }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 12, fontSize: 18 }}>Neuen Sim anlegen</div>
+
+            <label style={{ display: "block", fontSize: 12, color: T.subtext, marginBottom: 6 }}>Name</label>
+            <input
+              value={createForm.name}
+              onChange={(e) => setCreateForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="z. B. Antonia Sommer"
+              style={{ width: "100%", padding: "10px 12px", border: `1px solid ${T.line}`, borderRadius: 12,
+                       background: "rgba(255,255,255,0.8)", outline: "none", marginBottom: 10, color: T.text }}
+            />
+
+            <label style={{ display: "block", fontSize: 12, color: T.subtext, marginBottom: 6 }}>Bild (optional)</label>
+            <input
+              type="file" accept="image/*"
+              onChange={(e)=> setCreateForm(f => ({ ...f, file: e.target.files?.[0] || null }))}
+              style={{ marginBottom: 10 }}
+            />
+
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 14 }}>
+              <input
+                type="checkbox"
+                checked={createForm.alive}
+                onChange={(e)=> setCreateForm(f => ({ ...f, alive: e.target.checked }))}
+              />
+              Lebend
+            </label>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={handleCreateCancel}
+                      style={{ padding: "9px 12px", borderRadius: 12, border: `1px solid ${T.line}`, background: T.accentSoft }}>
+                Abbrechen
+              </button>
+              <button onClick={handleCreateSubmit}
+                      style={{ padding: "9px 12px", borderRadius: 12, border: `1px solid ${T.line}`, background: T.accent, color: "#fff" }}>
+                Anlegen
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

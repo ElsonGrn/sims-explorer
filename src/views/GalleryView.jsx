@@ -1,20 +1,21 @@
-// src/views/GalleryView.jsx
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import InfoModal from "../shared/InfoModal.jsx";
 
 export default function GalleryView({
   data,
-  onChange,
+  onChange,                    // optional – zusätzlich feuern wir ein CustomEvent
+  onOpenInfo,                  // (id) => void  ✅ neu: öffnet Parent-InfoModal
   onFocusInExplorer,
   bgImage, bgOpacity = 0.25,
   onBgUpload, onBgOpacity, onBgClear,
-  onRequestCreateSim,                 // ✅ NEU
+  onRequestCreateSim,          // optional: Parent öffnet „Neuen Sim“-Modal
 }) {
+  // ---- Daten ----
   const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
   const edges = Array.isArray(data?.edges) ? data.edges : [];
 
+  // ---- Suche & Sortierung ----
   const [search, setSearch] = useState("");
-  const [sort, setSort]     = useState("name_asc");
+  const [sort, setSort]     = useState("name_asc"); // name_asc | name_desc
 
   const people = useMemo(() => {
     let list = [...nodes];
@@ -25,75 +26,120 @@ export default function GalleryView({
     return list;
   }, [nodes, search, sort]);
 
+  // ---- Update Helper ----
   const applyChange = (nextNodes, nextEdges = edges) => {
     const payload = { nodes: nextNodes, edges: nextEdges };
     try { window.dispatchEvent(new CustomEvent("sims:updateData", { detail: payload })); } catch {}
     if (typeof onChange === "function") onChange(payload);
   };
-  const updateNode = (id, patch) => applyChange(nodes.map(n => n.id===id ? { ...n, ...patch } : n));
+  const updateNode = (id, patch) => {
+    const next = nodes.map(n => n.id === id ? { ...n, ...patch } : n);
+    applyChange(next);
+  };
 
-  // Personen-Kontextmenü
-  const [menu, setMenu] = useState({ open:false, x:0, y:0, sim:null });
-  const menuRef = useRef(null);
-  const openMenu = (e, sim) => { e.preventDefault(); setMenu({ open:true, x:e.clientX, y:e.clientY, sim }); };
-  const closeMenu = () => setMenu(m => ({ ...m, open:false }));
+  // ---- EIN Kontextmenü via Delegation ----
+  const wrapRef = useRef(null);       // gesamter Grid/Content-Bereich
+  const [cardCtx, setCardCtx] = useState({ open:false, x:0, y:0, id:"" });
+  const [bgCtx,   setBgCtx]   = useState({ open:false, x:0, y:0 });
 
-  useLayoutEffect(() => {
-    if (!menu.open || !menuRef.current) return;
-    const r = menuRef.current.getBoundingClientRect();
-    let nx = menu.x, ny = menu.y;
-    if (nx + r.width  > window.innerWidth ) nx = window.innerWidth  - r.width  - 6;
-    if (ny + r.height > window.innerHeight) ny = window.innerHeight - r.height - 6;
-    menuRef.current.style.left = `${nx}px`;
-    menuRef.current.style.top  = `${ny}px`;
-  }, [menu.open, menu.x, menu.y]);
+  const cardMenuRef = useRef(null);
+  const bgMenuRef   = useRef(null);
 
+  // Koordinaten relativ zum Container (und clampen)
+  const getRelXY = (clientX, clientY) => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return { x: clientX, y: clientY };
+    const x = Math.max(6, Math.min(clientX - rect.left, rect.width  - 6));
+    const y = Math.max(6, Math.min(clientY - rect.top,  rect.height - 6));
+    return { x, y };
+  };
+
+  // Einziger native Kontextmenü-Handler am Container
   useEffect(() => {
-    if (!menu.open) return;
-    const onDown = (ev) => { if (menuRef.current && !menuRef.current.contains(ev.target)) closeMenu(); };
-    const onEsc  = (ev) => { if (ev.key === "Escape") closeMenu(); };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onEsc);
-    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onEsc); };
-  }, [menu.open]);
+    const el = wrapRef.current;
+    if (!el) return;
 
-  // Bild-Auswahl-Dialog (wie zuvor) …
-  const [editSimId, setEditSimId] = useState(null);
-  const [form, setForm] = useState({ id:"", label:"", alive:true, traits:[], notes:"", img:null, image:null });
-  const startEdit = (sim) => { /* … unverändert … */ 
-    if (!sim) return;
-    setEditSimId(sim.id);
-    setForm({
-      id: sim.id, label: (sim.label || sim.id || "").toString(),
-      alive: sim.alive !== false, traits: Array.isArray(sim.traits) ? sim.traits : [],
-      notes: (sim.notes || "").toString(),
-      img: sim.img || sim.image || null, image: sim.img || sim.image || null,
+    const onCtx = (e) => {
+      // nur hier behandeln
+      e.preventDefault();
+
+      const targetCard = e.target?.closest?.("[data-sim-id]");
+      const p = getRelXY(e.clientX, e.clientY);
+
+      if (targetCard) {
+        const id = targetCard.getAttribute("data-sim-id") || "";
+        setCardCtx({ open:true, x:p.x, y:p.y, id });
+        setBgCtx({ open:false, x:0, y:0 });
+      } else {
+        setBgCtx({ open:true, x:p.x, y:p.y });
+        setCardCtx({ open:false, x:0, y:0, id:"" });
+      }
+    };
+
+    const closeAll = () => {
+      setCardCtx({ open:false, x:0, y:0, id:"" });
+      setBgCtx({ open:false, x:0, y:0 });
+    };
+
+    el.addEventListener("contextmenu", onCtx);
+    document.addEventListener("pointerdown", (ev) => {
+      // Klicken außerhalb schließt
+      if (cardCtx.open && cardMenuRef.current && !cardMenuRef.current.contains(ev.target)) {
+        setCardCtx({ open:false, x:0, y:0, id:"" });
+      }
+      if (bgCtx.open && bgMenuRef.current && !bgMenuRef.current.contains(ev.target)) {
+        setBgCtx({ open:false, x:0, y:0 });
+      }
     });
+    const onKey = (ev)=>{ if (ev.key === "Escape") closeAll(); };
+    const onScrollResize = ()=> closeAll();
+
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScrollResize, true);
+    window.addEventListener("resize", onScrollResize);
+
+    return () => {
+      el.removeEventListener("contextmenu", onCtx);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScrollResize, true);
+      window.removeEventListener("resize", onScrollResize);
+    };
+  }, [cardCtx.open, bgCtx.open]);
+
+  // Clamp Menüs in den Viewport (fixed Koordinaten berechnen)
+  const clampFixed = (ref, state) => {
+    if (!state.open || !ref.current || !wrapRef.current) return;
+    const menuRect = ref.current.getBoundingClientRect();
+    const containerRect = wrapRef.current.getBoundingClientRect();
+    // Zielposition relativ zum Container → in Fixed umrechnen:
+    let fx = containerRect.left + state.x;
+    let fy = containerRect.top  + state.y;
+    // clampen an Fenster
+    if (fx + menuRect.width  > window.innerWidth)  fx = Math.max(6, window.innerWidth  - menuRect.width  - 6);
+    if (fy + menuRect.height > window.innerHeight) fy = Math.max(6, window.innerHeight - menuRect.height - 6);
+    ref.current.style.left = `${fx}px`;
+    ref.current.style.top  = `${fy}px`;
   };
-  const saveEdit = () => { /* … unverändert … */ 
-    const next = nodes.map(n => {
-      if (n.id !== form.id) return n;
-      const newImage = (form.img || form.image);
-      return {
-        ...n, label: form.label.trim() || n.id, alive: !!form.alive,
-        traits: Array.from(new Set((form.traits||[]).filter(Boolean))),
-        notes: form.notes,
-        img:   newImage != null ? newImage : (n.img   ?? n.image ?? null),
-        image: newImage != null ? newImage : (n.image ?? n.img   ?? null),
-      };
-    });
-    applyChange(next); setEditSimId(null);
-  };
-  const deleteSim = (simId) => {
-    const nextNodes = nodes.filter(n => n.id !== simId);
-    const nextEdges = edges.filter(e => e.source !== simId && e.target !== simId);
+  useLayoutEffect(() => clampFixed(cardMenuRef, cardCtx), [cardCtx]);
+  useLayoutEffect(() => clampFixed(bgMenuRef,   bgCtx),   [bgCtx]);
+
+  // ---- Daten-Helfer ----
+  const removePerson = (id) => {
+    const nextNodes = nodes.filter(n => n.id !== id);
+    const nextEdges = edges.filter(e => e.source !== id && e.target !== id);
     applyChange(nextNodes, nextEdges);
+    setCardCtx({ open:false, x:0, y:0, id:"" });
+  };
+  const removeAllRelationsOf = (id) => {
+    const next = { nodes, edges: edges.filter(e => e.source !== id && e.target !== id) };
+    applyChange(next.nodes, next.edges);
+    setCardCtx(prev => ({ ...prev, open:false }));
   };
 
-  // Bild-Dialog (Firefox-sicher)
+  // ---- Bild-Auswahl (leichter Inline-Modal) ----
   const [imgDlg, setImgDlg] = useState({ open:false, mode:"sim", targetId:null, preview:null, fileName:"" });
   const openImageDialogForSim = (simId) => setImgDlg({ open:true, mode:"sim", targetId:simId, preview:null, fileName:"" });
-  const openImageDialogForBg  = () => setImgDlg({ open:true, mode:"bg", targetId:null, preview:null, fileName:"" });
+  const openImageDialogForBg  = () => setImgDlg({ open:true, mode:"bg",  targetId:null,   preview:null, fileName:"" });
   const cancelImageDialog = () => setImgDlg(d => ({ ...d, open:false, preview:null, fileName:"" }));
   const onPickFile = async (file) => {
     if (!file) return;
@@ -105,39 +151,20 @@ export default function GalleryView({
     if (!imgDlg.preview) { cancelImageDialog(); return; }
     if (imgDlg.mode === "sim" && imgDlg.targetId) {
       updateNode(imgDlg.targetId, { img: imgDlg.preview, image: imgDlg.preview });
-      if (editSimId === imgDlg.targetId) setForm(f => ({ ...f, img: imgDlg.preview, image: imgDlg.preview }));
     } else if (imgDlg.mode === "bg") {
       onBgUpload?.(imgDlg.preview);
     }
     cancelImageDialog();
   };
 
-  // Explorer-Fokus
+  // ---- Explorer Fokus ----
   const focusInExplorer = (id) => {
     if (!id) return;
     if (typeof onFocusInExplorer === "function") onFocusInExplorer(id);
     else window.dispatchEvent(new CustomEvent("sims:focusNode", { detail:{ id } }));
   };
 
-  // ✅ Hintergrund-Kontextmenü (rechter Mausklick auf freien Bereich)
-  const [bgMenu, setBgMenu] = useState({ open:false, x:0, y:0 });
-  const bgMenuRef = useRef(null);
-  function onRootContextMenu(e){
-    const isCard = e.target.closest?.("[data-sim-id]");
-    if (isCard) return; // Personenmenü übernimmt
-    e.preventDefault();
-    setBgMenu({ open:true, x:e.clientX, y:e.clientY });
-  }
-  useEffect(() => {
-    if (!bgMenu.open) return;
-    const onDown = (ev) => { if (bgMenuRef.current && !bgMenuRef.current.contains(ev.target)) setBgMenu({open:false,x:0,y:0}); };
-    const onEsc  = (ev) => { if (ev.key === "Escape") setBgMenu({open:false,x:0,y:0}); };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onEsc);
-    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onEsc); };
-  }, [bgMenu.open]);
-
-  // Styles
+  // ---- Styles ----
   const rootStyle = {
     minHeight: "calc(100vh - 58px)",
     background:
@@ -154,7 +181,12 @@ export default function GalleryView({
   const select = { ...input };
   const btn = { ...input, cursor:"pointer", boxShadow:"0 2px 6px rgba(0,0,0,0.06)" };
   const grid = { display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:16, padding:"0 16px 24px" };
-  const card = { position:"relative", borderRadius:20, overflow:"hidden", border:"1px solid #e6f3ec", boxShadow:"0 8px 22px rgba(0,0,0,0.08)", background:"#fff", cursor:"default", contentVisibility:"auto", containIntrinsicSize:"260px 320px" };
+  const card = {
+    position:"relative", borderRadius:20, overflow:"hidden",
+    border:"1px solid #e6f3ec", boxShadow:"0 8px 22px rgba(0,0,0,0.08)",
+    background:"#fff", cursor:"default",
+    contentVisibility:"auto", containIntrinsicSize:"260px 320px",
+  };
   const banner = { position:"relative", aspectRatio:"3 / 2", background:"#e6fff3" };
   const bannerImg = { position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"cover", display:"block" };
   const overlay = { position:"absolute", inset:0, background:"linear-gradient(to top, rgba(0,0,0,0.45), rgba(0,0,0,0.05) 60%, transparent)" };
@@ -165,16 +197,15 @@ export default function GalleryView({
   const body = { padding:"10px 12px", display:"flex", flexDirection:"column", gap:8 };
   const traits = { display:"flex", flexWrap:"wrap", gap:6 };
   const trait = { padding:"2px 8px", borderRadius:999, border:"1px solid #cfeede", background:"#fff", fontSize:12 };
-  const quick = { position:"absolute", top:8, right:8, display:"flex", gap:6, opacity:0, transition:"opacity .15s ease" };
-  const iconBtn = { padding:6, borderRadius:10, border:"1px solid rgba(255,255,255,0.5)", background:"rgba(0,0,0,0.25)", color:"#fff", cursor:"pointer" };
+
   const menuBox = { position:"fixed", zIndex:1000, background:"#fff", border:"1px solid #e5e7eb", borderRadius:12, minWidth:220, boxShadow:"0 10px 30px rgba(0,0,0,0.15)", overflow:"hidden" };
   const menuItem = { padding:"10px 12px", cursor:"pointer", borderBottom:"1px solid #f1f5f9", userSelect:"none" };
 
   return (
-    <div style={rootStyle} onContextMenu={onRootContextMenu}>
+    <div style={rootStyle}>
       {/* Toolbar */}
       <div style={toolbar}>
-        <input style={input} value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Suche nach Name…"/>
+        <input style={input} value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Suche nach Name…" />
         <select style={select} value={sort} onChange={(e)=>setSort(e.target.value)}>
           <option value="name_asc">Name A–Z</option>
           <option value="name_desc">Name Z–A</option>
@@ -189,123 +220,174 @@ export default function GalleryView({
         </div>
       </div>
 
-      {/* Karten */}
-      <div style={grid}>
-        {people.map(p => (
-          <div
-            key={p.id}
-            data-sim-id={p.id}
-            style={card}
-            title={p.label ?? p.id}
-            onContextMenu={(e)=>openMenu(e, p)}
-            onMouseEnter={(e)=>{ const q = e.currentTarget.querySelector(".q"); if (q) q.style.opacity = 1; }}
-            onMouseLeave={(e)=>{ const q = e.currentTarget.querySelector(".q"); if (q) q.style.opacity = 0; }}
-          >
-            <div className="q" style={quick}>
-              <button title="Bearbeiten" style={iconBtn} onClick={()=>startEdit(p)}>📝</button>
-              <button title="Im Explorer fokussieren" style={iconBtn} onClick={()=>focusInExplorer(p.id)}>🗺️</button>
-              <button title="Bild ändern" style={iconBtn} onClick={()=>openImageDialogForSim(p.id)}>🖼️</button>
-              <button title="Löschen" style={iconBtn} onClick={()=>deleteSim(p.id)}>🗑️</button>
-            </div>
-
-            <div style={banner}>
-              {(p.img || p.image) ? <img src={p.img || p.image} alt={p.label ?? p.id} loading="lazy" style={bannerImg} /> : null}
-              <div style={overlay}></div>
-              <div style={meta}>
-                <div>
-                  <div style={name}>{p.label ?? p.id}</div>
-                  <div style={badges}>
-                    <span style={badge}>{p.occult || "Mensch"}</span>
-                    <span style={badge}>{p.alive === false ? "† verstorben" : "lebend"}</span>
-                    {p.household ? <span style={badge}>Haushalt: {p.household}</span> : null}
-                    {p.age ? <span style={badge}>{p.age}</span> : null}
+      {/* Inhalt + Delegation-Root */}
+      <div ref={wrapRef} style={{ position:"relative", padding:"0 16px 24px" }}>
+        <div style={grid}>
+          {people.map(p => (
+            <div
+              key={p.id}
+              data-sim-id={p.id}
+              style={card}
+              title={p.label ?? p.id}
+            >
+              <div style={banner}>
+                {(p.img || p.image) ? <img src={p.img || p.image} alt={p.label ?? p.id} loading="lazy" style={bannerImg} /> : null}
+                <div style={overlay}></div>
+                <div style={meta}>
+                  <div>
+                    <div style={name}>{p.label ?? p.id}</div>
+                    <div style={badges}>
+                      <span style={badge}>{p.occult || "Mensch"}</span>
+                      <span style={badge}>{p.alive === false ? "† verstorben" : "lebend"}</span>
+                      {p.household ? <span style={badge}>Haushalt: {p.household}</span> : null}
+                      {p.age ? <span style={badge}>{p.age}</span> : null}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div style={body}>
-              {Array.isArray(p.traits) && p.traits.length > 0 && (
-                <div style={traits}>{p.traits.slice(0,6).map((t,i)=><span style={trait} key={i}>{t}</span>)}</div>
-              )}
-              {p.notes ? <div style={{ fontSize:13, opacity:.85, lineHeight:1.35 }}>{p.notes}</div> : null}
+              <div style={body}>
+                {Array.isArray(p.traits) && p.traits.length > 0 && (
+                  <div style={traits}>{p.traits.slice(0,6).map((t,i)=><span style={trait} key={i}>{t}</span>)}</div>
+                )}
+                {p.notes ? <div style={{ fontSize:13, opacity:.85, lineHeight:1.35 }}>{p.notes}</div> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Kontextmenü: Card */}
+        {cardCtx.open && (
+          <div
+            ref={cardMenuRef}
+            style={{ ...menuBox, left: 0, top: 0 }}
+            onContextMenu={(e)=>e.preventDefault()}
+          >
+            <div style={menuItem}
+                 onClick={()=>{ onOpenInfo?.(cardCtx.id); setCardCtx({ open:false, x:0, y:0, id:"" }); }}>
+              ℹ️ Infos bearbeiten…
+            </div>
+            <div style={menuItem}
+                 onClick={()=>{ openImageDialogForSim(cardCtx.id); setCardCtx({ open:false, x:0, y:0, id:"" }); }}>
+              🖼️ Bild ändern
+            </div>
+            <div style={menuItem}
+                 onClick={()=>{ onFocusInExplorer?.(cardCtx.id); setCardCtx({ open:false, x:0, y:0, id:"" }); }}>
+              🗺️ Im Explorer fokussieren
+            </div>
+            <div style={{ ...menuItem, borderBottom:0, color:"#b3261e" }}
+                 onClick={()=>removePerson(cardCtx.id)}>
+              🗑️ Sim löschen
             </div>
           </div>
-        ))}
+        )}
+
+        {/* Kontextmenü: Hintergrund */}
+        {bgCtx.open && (
+          <div
+            ref={bgMenuRef}
+            style={{ ...menuBox, left: 0, top: 0 }}
+            onContextMenu={(e)=>e.preventDefault()}
+          >
+            <div style={menuItem}
+                 onClick={()=>{
+                   if (onRequestCreateSim) onRequestCreateSim();
+                   else {
+                     // Fallback: sofort anlegen
+                     const next = structuredClone(data);
+                     const base = "sim";
+                     const taken = new Set(next.nodes.map(n => n.id));
+                     let i = 1, id = base;
+                     while (taken.has(id)) id = `${base}-${++i}`;
+                     next.nodes.push({ id, label:`Neuer Sim${i>1?` ${i}`:""}`, img:"", alive:true, info:{ fields:[] } });
+                     applyChange(next.nodes, next.edges);
+                   }
+                   setBgCtx({ open:false, x:0, y:0 });
+                 }}>
+              ➕ Neuen Sim anlegen…
+            </div>
+
+            <div style={menuItem} onClick={()=>{ openImageDialogForBg(); setBgCtx({ open:false, x:0, y:0 }); }}>
+              🖼️ Hintergrund wählen…
+            </div>
+
+            <div style={menuItem}>
+              <div style={{ fontSize:12, opacity:.8, marginBottom:6 }}>
+                Deckkraft: {Math.round(bgOpacity*100)}%
+              </div>
+              <input type="range" min={0} max={1} step={0.05} value={bgOpacity}
+                     onChange={(e)=>onBgOpacity?.(parseFloat(e.target.value))}
+                     style={{ width:"100%" }}/>
+            </div>
+
+            <div style={{ ...menuItem, borderBottom:0, color:"#b3261e" }}
+                 onClick={()=>{ onBgClear?.(); setBgCtx({ open:false, x:0, y:0 }); }}>
+              🗑️ Hintergrund entfernen
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Personen-Kontextmenü */}
-      {menu.open && (
-        <div ref={menuRef} style={{ ...menuBox, left: menu.x, top: menu.y }}>
-          <div style={menuItem} onClick={()=>{ startEdit(menu.sim); closeMenu(); }}>📝 Info bearbeiten</div>
-          <div style={menuItem} onClick={()=>{ openImageDialogForSim(menu.sim.id); closeMenu(); }}>🖼️ Bild ändern</div>
-          <div style={menuItem} onClick={()=>{ focusInExplorer(menu.sim?.id); closeMenu(); }}>🗺️ Im Explorer fokussieren</div>
-          <div style={{ ...menuItem, borderBottom:0 }} onClick={()=>{ deleteSim(menu.sim?.id); closeMenu(); }}>🗑️ Sim löschen</div>
-        </div>
-      )}
+      {/* Leichtgewicht-Modal für Bildauswahl */}
+      {imgDlg.open && (
+        <div
+          onClick={cancelImageDialog}
+          style={{
+            position:"fixed", inset:0, background:"rgba(0,0,0,0.25)",
+            display:"flex", alignItems:"center", justifyContent:"center", zIndex:2000
+          }}
+        >
+          <div
+            onClick={(e)=>e.stopPropagation()}
+            style={{
+              width:"min(560px, 95vw)", maxHeight:"90vh",
+              padding:16, borderRadius:16, background:"#fff",
+              border:"1px solid #e5e7eb", boxShadow:"0 10px 30px rgba(0,0,0,0.12)",
+              display:"flex", flexDirection:"column"
+            }}
+          >
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+              <div style={{ fontWeight:800, fontSize:18 }}>
+                {imgDlg.mode === "bg" ? "Hintergrundbild wählen" : "Bild für Sim wählen"}
+              </div>
+              <button onClick={cancelImageDialog} style={{ padding:"6px 10px", borderRadius:10, border:"1px solid #e5e7eb" }}>
+                Schliessen
+              </button>
+            </div>
 
-      {/* ✅ Hintergrund-Menü */}
-      {bgMenu.open && (
-        <div ref={bgMenuRef} style={{ ...menuBox, left:bgMenu.x, top:bgMenu.y }}>
-          <div style={{ ...menuItem, borderBottom:0 }} onClick={()=>{ onRequestCreateSim?.(); setBgMenu({open:false,x:0,y:0}); }}>
-            ➕ Neuen Sim anlegen…
+            <div style={{ display:"grid", gap:12, overflow:"auto" }}>
+              <input type="file" accept="image/*" onChange={(e)=>onPickFile(e.target.files?.[0] || null)} />
+              {imgDlg.fileName ? <div style={{ fontSize:12, opacity:.8 }}>Ausgewählt: {imgDlg.fileName}</div> : null}
+              {imgDlg.preview ? (
+                <img
+                  src={imgDlg.preview}
+                  alt="Vorschau"
+                  style={{ width:"100%", maxHeight:"50vh", objectFit:"cover", borderRadius:12, border:"1px solid #e5e7eb" }}
+                />
+              ) : (
+                <div style={{ fontSize:13, opacity:.8 }}>Bitte ein Bild auswählen.</div>
+              )}
+              <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+                <button onClick={cancelImageDialog} style={{ padding:"8px 12px", borderRadius:10, border:"1px solid #e5e7eb" }}>
+                  Abbrechen
+                </button>
+                <button
+                  onClick={confirmImageDialog}
+                  disabled={!imgDlg.preview}
+                  style={{ padding:"8px 12px", borderRadius:10, border:"1px solid #16a34a", background:"#16a34a", color:"#fff" }}
+                >
+                  Speichern
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
-
-      {/* Edit-Modal */}
-      <InfoModal open={!!editSimId} title="Sim bearbeiten" onClose={()=>setEditSimId(null)}>
-        {/* … dein Formular (unverändert) … */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-          <Field label="Name"><input style={input} value={form.label} onChange={(e)=>setForm(f=>({...f, label:e.target.value}))}/></Field>
-          <Field label="Status">
-            <select style={input} value={form.alive ? "alive" : "dead"} onChange={(e)=>setForm(f=>({...f, alive:e.target.value==="alive"}))}>
-              <option value="alive">lebend</option><option value="dead">verstorben</option>
-            </select>
-          </Field>
-          <Field label="Traits (kommagetrennt)" full>
-            <input style={input} value={(form.traits || []).join(", ")} onChange={(e)=>setForm(f=>({...f, traits: e.target.value.split(",").map(s=>s.trim()).filter(Boolean)}))} />
-          </Field>
-          <Field label="Notizen" full>
-            <textarea style={{ ...input, minHeight: 90 }} value={form.notes} onChange={(e)=>setForm(f=>({...f, notes:e.target.value}))}/>
-          </Field>
-          <Field label="Bild" full>
-            <button style={btn} onClick={()=>openImageDialogForSim(form.id)}>Bild auswählen…</button>
-            {(form.img || form.image) ? <img src={form.img || form.image} alt="Preview" style={{ marginTop:8, width:"100%", borderRadius:12, border:"1px solid #e5e7eb" }}/> : null}
-          </Field>
-        </div>
-        <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:12 }}>
-          <button style={btn} onClick={()=>setEditSimId(null)}>Abbrechen</button>
-          <button style={{ ...btn, background:"#00C176", color:"#fff", borderColor:"#00C176" }} onClick={saveEdit}>Speichern</button>
-        </div>
-      </InfoModal>
-
-      {/* Bild-Auswahl-Modal (SIM / HINTERGRUND) */}
-      <InfoModal open={imgDlg.open} title={imgDlg.mode === "bg" ? "Hintergrundbild wählen" : "Bild für Sim wählen"} onClose={cancelImageDialog}>
-        <div style={{ display:"grid", gap:12 }}>
-          <input type="file" accept="image/*" onChange={(e)=>onPickFile(e.target.files?.[0] || null)} />
-          {imgDlg.fileName ? <div style={{ fontSize:12, opacity:.8 }}>Ausgewählt: {imgDlg.fileName}</div> : null}
-          {imgDlg.preview ? <img src={imgDlg.preview} alt="Vorschau" style={{ width:"100%", maxHeight:"50vh", objectFit:"cover", borderRadius:12, border:"1px solid #e5e7eb" }}/>
-                           : <div style={{ fontSize:13, opacity:.8 }}>Bitte ein Bild auswählen.</div>}
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
-            <button style={btn} onClick={cancelImageDialog}>Abbrechen</button>
-            <button style={{ ...btn, background:"#00C176", color:"#fff", borderColor:"#00C176" }} onClick={confirmImageDialog} disabled={!imgDlg.preview}>Speichern</button>
-          </div>
-        </div>
-      </InfoModal>
     </div>
   );
 }
 
-/* helpers / UI */
-function Field({ label, children, full }) {
-  return (
-    <div style={{ gridColumn: full ? "1 / -1" : "auto" }}>
-      <label style={{ display:"block", fontSize:12, opacity:.75, marginBottom:4 }}>{label}</label>
-      {children}
-    </div>
-  );
-}
+/* ---------- Helpers ---------- */
 function fileToDataUrl(file){
   return new Promise((resolve, reject) => {
     const r = new FileReader();
